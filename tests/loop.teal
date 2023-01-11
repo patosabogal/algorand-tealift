@@ -1,0 +1,12 @@
+int x
+loop:
+  dup
+  int 9
+  <
+  bnz end
+  dup
+  +
+  b loop
+
+end:
+err

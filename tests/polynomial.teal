@@ -12,4 +12,4 @@ int 6
 
 end:
 +
-err
+return

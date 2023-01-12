@@ -9,4 +9,4 @@ loop:
   b loop
 
 end:
-err
+return

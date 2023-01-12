@@ -15,111 +15,138 @@ const isn = {
 	'!=': {
 		signature: sig`any any -- uint64`,
 		next: () => [next],
-		exec(stack) {
-			const rhs = stack.pop()
-			const lhs = stack.pop()
-			stack.push({ op: 'neq', rhs, lhs })
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: 'neq', rhs, lhs })
+			return ctx.resolve_label(next)
 		}
 	},
 	'&&': {
 		signature: sig`uint64 uint64 -- uint64`,
 		next: () => [next],
-		exec(stack) {
-			const rhs = stack.pop()
-			const lhs = stack.pop()
-			stack.push({ op: 'and', rhs, lhs })
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: 'and', rhs, lhs })
+			return ctx.resolve_label(next)
 		},
 		graphviz: () => '&&',
 	},
 	'+': {
 		signature: sig`uint64 uint64 -- uint64`,
 		next: () => [next],
-		exec(stack) {
-			const rhs = stack.pop()
-			const lhs = stack.pop()
-			stack.push({ op: 'add', rhs, lhs })
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: 'add', rhs, lhs })
+			return ctx.resolve_label(next)
 		},
 	},
 	'<': {
 		signature: sig`uint64 uint64 -- uint64`,
 		next: () => [next],
-		exec(stack) {
-			const rhs = stack.pop()
-			const lhs = stack.pop()
-			stack.push({ op: 'le', rhs, lhs })
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: 'le', rhs, lhs })
+			return ctx.resolve_label(next)
 		},
 	},
 	'==': {
 		signature: sig`any any -- uint64`,
 		next: () => [next],
-		exec(stack) {
-			const rhs = stack.pop()
-			const lhs = stack.pop()
-			stack.push({ op: 'eq', rhs, lhs })
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: 'eq', rhs, lhs })
+			return ctx.resolve_label(next)
 		},
 	},
 	'addr': {
 		signature: sig`-- []byte`,
 		next: (_target) => [next],
-		exec(value, stack) {
-			stack.push({ op: 'const', type: bytearray, value })
+		exec(value, ctx) {
+			ctx.push({ op: 'const', type: bytearray, value })
+			return ctx.resolve_label(next)
 		},
 	},
 	'b': {
 		signature: sig`--`,
 		next: (label) => [label],
-		exec(_label, _stack) {},
+		exec(label, ctx) {
+			return ctx.resolve_label(label, 'jump')
+		},
 	},
 	'bnz': {
 		signature: sig`uint64 --`,
-		next: (label) => [next, label],
-		exec(_label, stack) {
-			stack.pop()
+		next: (label) => [label, next],
+		exec(label, ctx) {
+			const condition = ctx.pop()
+			return {
+				kind: 'switch',
+				condition,
+				alternatives: [ctx.resolve_label(next, 'zero'), ctx.resolve_label(label, 'non-zero')]
+			}
 		},
 	},
 	'dup': {
 		signature: sig`any -- any any`,
 		next: () => [next],
-		exec(stack) {
-			const value_handle = stack.pop()
-			stack.push_handle(value_handle)
-			stack.push_handle(value_handle)
+		exec(ctx) {
+			const value_handle = ctx.pop()
+			ctx.push_handle(value_handle)
+			ctx.push_handle(value_handle)
+			return ctx.resolve_label(next)
 		}
 	},
 	'err': {
 		signature: sig`--`,
 		next: (_target) => [],
 		exec() {
+			return {
+				kind: 'exit',
+				label: 'err',
+				consumes: []
+			}
 		},
 	},
 	'global': {
 		// FIXME: We can use a better type here
 		signature: sig`-- any`,
 		next: (_target) => [next],
-		exec(name, stack) {
-			stack.push({ op: 'ext_const', type: any, name: `global.${name}` })
+		exec(name, ctx) {
+			ctx.push({ op: 'ext_const', type: any, name: `global.${name}` })
+			return ctx.resolve_label(next)
 		},
 	},
 	'gtxn': {
 		// -- any
 		signature: (_txn, field) => ({ pops: 0, pushes: txn_fields[field].type || any }),
 		next: (_txn, _field) => [next],
-		exec(txn, field, stack) {
-			stack.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `gtxn[${txn}].${field}` })
+		exec(txn, field, ctx) {
+			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `gtxn[${txn}].${field}` })
+			return ctx.resolve_label(next)
 		},
 	},
 	'int': {
 		signature: sig`-- uint64`,
 		next: (_target) => [next],
-		exec(value, stack) {
-			stack.push({ op: 'const', type: uint64, value: parseInt(value) || value })
+		exec(value, ctx) {
+			ctx.push({ op: 'const', type: uint64, value: parseInt(value) || value })
+			return ctx.resolve_label(next)
 		},
 	},
 	'return': {
 		signature: sig`uint64 --`,
 		next: (_target) => [],
-		exec(stack) {
-			stack.pop()
+		exec(ctx) {
+			const return_value = ctx.pop()
+			return {
+				kind: 'exit',
+				label: 'return',
+				consumes: [return_value]
+			}
 		},
 	},
 }
@@ -271,9 +298,6 @@ const dump_graphviz = (basic_blocks, successors, program) => {
 const gather_basic_blocks = (program, labels) => {
 	assert(program.length !== 0, 'Program should have at least one instruction')
 
-	// Mpas instruction_idx => previous_instruction_idx
-	const predecessors = new Map()
-
 	const successors_of = idx => {
 		const instruction = program[idx]
 		const successor_labels =
@@ -288,8 +312,10 @@ const gather_basic_blocks = (program, labels) => {
 			return label_idx
 		})
 	}
-	const predecessors_of = instruction_idx => get_list(predecessors, instruction_idx)
 
+	// Maps instruction_idx => previous_instruction_idx
+	const predecessors = new Map()
+	const predecessors_of = instruction_idx => get_list(predecessors, instruction_idx)
 	for (const predecessor_idx of range(program.length))
 		for (const successor_idx of successors_of(predecessor_idx))
 			predecessors_of(successor_idx).push(predecessor_idx)
@@ -340,116 +366,199 @@ const gather_basic_blocks = (program, labels) => {
 	return [basic_blocks, basic_block_successors]
 }
 
-const exec_program = (program, basic_blocks, successors) => {
+const exec_program = (program, labels) => {
 	const constants = new Map()
-	const processed = new Set()
 	const values = new Map()
-	const basic_block_info = new Map()
-	// FIXME: Report if two basic blocks push too-much
-	const basic_block_queue = [0]
-	while (basic_block_queue.length !== 0) {
-		const basic_block_idx = basic_block_queue.pop()
-		const basic_block = basic_blocks[basic_block_idx]
+	const regions = new Map()
+	const regions_info = new Map()
+	values.set(0, { op: 'start' })
+	const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: 0 }]
 
-		if (processed.has(basic_block_idx))
-			continue
-		else
-			processed.add(basic_block_idx)
-
-		let instructions = []
-		let symbolic_stack = []
-		let used_from_caller = 0
-
-		for (const instruction_idx of basic_block) {
-			class SymbolicStackWrapper {
-				constructor() { this.pushed = 0 }
-				push(value) {
-					let value_key
-					if (value.op === 'const' || value.op === 'ext_const') {
-						value_key = value.op === 'const'
-							? `${value.op};${value.type};${value.value}`
-							: `${value.op};${value.type};${value.name}`
-						let constant_hash = constants.get(value_key)
-						if (constant_hash !== undefined) {
-							symbolic_stack.push(constant_hash)
-							return
-						}
-					}
-
-					const value_hash = program.length * ++this.pushed + instruction_idx
-					values.set(value_hash, value)
-					symbolic_stack.push(value_hash)
-
-					if (value.op === 'const' || value.op === 'ext_const')
-						constants.set(value_key, value_hash)
-				}
-				push_handle(value_hash) {
-					symbolic_stack.push(value_hash)
-				}
-				pop() {
-					if (symbolic_stack.length > 0)
-						return symbolic_stack.pop()
-
-					const phi_hash = program.length * -++used_from_caller + basic_block_idx
-					values.set(phi_hash, { op: 'phi', mapping: new Map() })
-					return phi_hash
-				}
-			}
-
-			const instruction = program[instruction_idx]
-			isn[instruction.operation].exec(...instruction.args, new SymbolicStackWrapper())
-		}
-		basic_block_info.set(basic_block_idx, {
-			pops: used_from_caller,
-			pushes: symbolic_stack, exit_stack: [...symbolic_stack],
-			instructions: []
+	const successors_of = idx => {
+		const instruction = program[idx]
+		const successor_labels =
+			isn[instruction.operation]?.next(...instruction.args)
+			|| warn_and_default(instruction)
+		return successor_labels.map(label => {
+			const label_idx = label === next
+				? idx + 1
+				: labels.get(label)
+			assert(label_idx !== undefined, `Destination for label '${label}' not found!`)
+			assert(label_idx < program.length, 'Program control fell out of bounds!')
+			return label_idx
 		})
-		for (const successor_idx of get_list(successors, basic_block_idx))
-			basic_block_queue.push(successor_idx)
 	}
 
-	for(const basic_block_idx of range(basic_blocks.length)) {
-		const symbolic_stack = basic_block_info.get(basic_block_idx).exit_stack
-		for (const successor_idx of get_list(successors, basic_block_idx)) {
+	// Maps instruction_idx => previous_instruction_idx
+	const predecessors = new Map()
+	const predecessors_of = instruction_idx => get_list(predecessors, instruction_idx)
+	for (const predecessor_idx of range(program.length))
+		for (const successor_idx of successors_of(predecessor_idx))
+			predecessors_of(successor_idx).push(predecessor_idx)
+
+	// Maps region id of region => successors
+	const region_successors = new Map()
+
+	// FIXME: Report if two basic blocks push too-much
+	while (instruction_queue.length !== 0) {
+		const jump_destination = instruction_queue.pop()
+		const region_id = jump_destination.to_instruction_idx
+		let instruction_idx = jump_destination.to_instruction_idx
+
+		let symbolic_stack = []
+		let used_from_caller = 0
+		let value_id = 1
+
+		const ctx = {
+			push(value) {
+				let value_key
+				if (value.op === 'const' || value.op === 'ext_const') {
+					value_key = value.op === 'const'
+						? `${value.op};${value.type};${value.value}`
+						: `${value.op};${value.type};${value.name}`
+					let constant_hash = constants.get(value_key)
+					if (constant_hash !== undefined) {
+						symbolic_stack.push(constant_hash)
+						return
+					}
+				}
+
+				const value_hash = this.add_value(value)
+				symbolic_stack.push(value_hash)
+
+				if (value.op === 'const' || value.op === 'ext_const')
+					constants.set(value_key, value_hash)
+
+				return value_hash
+			},
+			push_handle(value_hash) {
+				symbolic_stack.push(value_hash)
+				return value_hash
+			},
+			pop() {
+				if (symbolic_stack.length > 0)
+					return symbolic_stack.pop()
+
+				const phi_hash = program.length * -++used_from_caller + region_id
+				values.set(phi_hash, { op: 'phi', mapping: new Map(), control: region_value_hash })
+				return phi_hash
+			},
+			sequence_point() {
+				last_sequence_point = this.add_value({ op: 'sequence_point', prev: last_sequence_point })
+				return last_sequence_point
+			},
+			add_value(value) {
+				const value_hash = program.length * value_id++ + (region_id + 1)
+				values.set(value_hash, value)
+				return value_hash
+			},
+			resolve_label(label, case_name) {
+				const label_idx = label === next
+					? instruction_idx + 1
+					: labels.get(label)
+				assert(label_idx !== undefined, `Destination for label '${label}' not found!`)
+				assert(label_idx < program.length, 'Program control fell out of bounds!')
+				return { kind: 'jump', label: case_name, instruction_idx: label_idx }
+			}
+		}
+
+		let last_sequence_point
+		{
+			let region = regions.get(instruction_idx)
+			if (region !== undefined) {
+				values.get(region).incoming.add(jump_destination.from_value_hash)
+				continue
+			}
+
+			region = { op: 'region', incoming: new Set([jump_destination.from_value_hash]) }
+			last_sequence_point = ctx.add_value(region)
+			regions.set(instruction_idx, last_sequence_point)
+		}
+		const region_value_hash = last_sequence_point
+
+		while (true) {
+			const instruction = program[instruction_idx]
+			const successors = isn[instruction.operation].exec(...instruction.args, ctx)
+
+			if (successors.kind === 'exit') {
+				last_sequence_point = ctx.add_value({ op: 'exit', prev: last_sequence_point, label: successors.label, consumes: successors.consumes })
+				region_successors.set(region_id, [])
+				break
+			}
+
+			if (successors.kind === 'switch') {
+				last_sequence_point = ctx.add_value({ op: 'switch', prev: last_sequence_point, condition: successors.condition })
+
+				for (const alternative of successors.alternatives) {
+					const projection_hash = ctx.add_value({ op: 'on', prev: last_sequence_point, label: alternative.label })
+					instruction_queue.push({ from_value_hash: projection_hash, to_instruction_idx: alternative.instruction_idx })
+				}
+				region_successors.set(region_id, successors.alternatives.map(v => v.instruction_idx))
+				break
+			}
+
+			if (successors.kind === 'jump') {
+				instruction_idx = successors.instruction_idx
+
+				if (predecessors_of(instruction_idx).length > 1) {
+					instruction_queue.push({ from_value_hash: last_sequence_point, to_instruction_idx: instruction_idx })
+					region_successors.set(region_id, [instruction_idx])
+					break
+				}
+
+				continue
+			}
+
+			throw new Error('Unknown CFG operation ' + successors.kind)
+		}
+
+		regions_info.set(region_id, {
+			pops: used_from_caller,
+			pushes: symbolic_stack, exit_stack: [...symbolic_stack]
+		})
+	}
+
+	for(const [region_id, region_info] of regions_info) {
+		const symbolic_stack = region_info.exit_stack
+		for (const successor_idx of region_successors.get(region_id)) {
 			for (const [value_hash, idx] of enumerate(symbolic_stack.slice().reverse())) {
 				const phi_hash = program.length * -(idx + 1) + successor_idx
 				const phi_value = values.get(phi_hash)
 				if (phi_value !== undefined)
-					phi_value.mapping.set(basic_block_idx, value_hash)
+					phi_value.mapping.set(region_id, value_hash)
 			}
 		}
 	}
 
-	const predecessors = new Map()
-	for (const [basic_block_idx, successor_idx_list] of successors)
+	const region_predecessors = new Map()
+	for (const [basic_block_idx, successor_idx_list] of region_successors)
 		for (const successor_idx of successor_idx_list)
-			get_list(predecessors, successor_idx).push(basic_block_idx)
+			get_list(region_predecessors, successor_idx).push(basic_block_idx)
 
 	let last_loop_did_change_something = true
 	while (last_loop_did_change_something) {
 		last_loop_did_change_something = false
-		for (const basic_block_idx of range(basic_blocks.length)) {
-			const predecessor_idxs = get_list(predecessors, basic_block_idx)
-			const basic_block_effect = basic_block_info.get(basic_block_idx)
-			for (const predecessor_idx of predecessor_idxs) {
-				const predecessor_effect = basic_block_info.get(predecessor_idx)
-				const values_to_be_kept = predecessor_effect.exit_stack.slice(-basic_block_effect.pops).reverse()
+		for (const [region_id, region_info] of regions_info) {
+			const predecessor_idxs = get_list(region_predecessors, region_id)
+			for (const predecessor_id of predecessor_idxs) {
+				const predecessor_region_info = regions_info.get(predecessor_id)
+				const values_to_be_kept = predecessor_region_info.exit_stack.slice(-region_info.pops).reverse()
 				for (const [value_hash, idx] of enumerate(values_to_be_kept)) {
-					const phi_hash = program.length * -(idx + 1) + basic_block_idx
+					const phi_hash = program.length * -(idx + 1) + region_id
 					let phi_value = values.get(phi_hash)
 					if (phi_value === undefined) {
-						phi_value = { op: 'phi', mapping: new Map() }
+						phi_value = { op: 'phi', mapping: new Map(), control: program.length + region_id + 1 /* Hash for the first value of the region */ }
 						values.set(phi_hash, phi_value)
 					}
 
-					const index = basic_block_effect.exit_stack.length - basic_block_effect.pushes.length - (idx + 1)
+					const index = region_info.exit_stack.length - region_info.pushes.length - (idx + 1)
 					if (index < 0) {
-						basic_block_effect.exit_stack.splice(0, 0, phi_hash)
+						region_info.exit_stack.splice(0, 0, phi_hash)
 						last_loop_did_change_something = true
 					}
 
-					if (!phi_value.mapping.has(predecessor_idx)) {
-						phi_value.mapping.set(predecessor_idx, value_hash)
+					if (!phi_value.mapping.has(predecessor_id)) {
+						phi_value.mapping.set(predecessor_id, value_hash)
 						last_loop_did_change_something = true
 					}
 				}
@@ -457,7 +566,7 @@ const exec_program = (program, basic_blocks, successors) => {
 		}
 	}
 
-	return [values, basic_block_info]
+	return values
 }
 
 const known_warnings = new Set()
@@ -485,8 +594,7 @@ const do_graphviz = filename => {
 
 const do_ssa = filename => {
 	const [program, labels] = process_file(filename)
-	const [basic_blocks, successors] = gather_basic_blocks(program, labels)
-	const [values, basic_block_effect] = exec_program(program, basic_blocks, successors)
+	const values = exec_program(program, labels)
 
 	const binop = (label) => (value_hash, value) =>
 		`node${value_hash} [label="${label}"]\n`
@@ -504,6 +612,35 @@ const do_ssa = filename => {
 			let result = `"node${value_hash}" [label="ϕ", shape=circle]\n`
 			for (const [basic_block_idx, mapping_value_hash] of value.mapping) {
 				result += `"node${mapping_value_hash}" -> "node${value_hash}" [label="${basic_block_idx}"]\n`
+			}
+			result += `"node${value.control}" -> "node${value_hash}" [style=dashed]`
+			return result
+		},
+		// CFG Operations
+		start: (value_hash) => `"node${value_hash}" [label="Start", color=red]\n`,
+		region: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="Region", color=red]\n`
+			for (const incoming_edge of value.incoming) {
+				const cfg_value = values.get(incoming_edge)
+				if (cfg_value.op === 'on')
+					result += `"node${cfg_value.prev}" -> "node${value_hash}" [label="${cfg_value.label}", style=dashed]\n`
+				else
+					result += `"node${incoming_edge}" -> "node${value_hash}" [style=dashed]\n`
+			}
+			return result
+		},
+		switch: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="Switch", color=red]\n`
+			result += `"node${value.condition}" -> "node${value_hash}"\n`
+			result += `"node${value.prev}" -> "node${value_hash}" [style=dashed]\n`
+			return result
+		},
+		on: () => { return '' },
+		exit: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="${value.label}", color=red]\n`
+			result += `"node${value.prev}" -> "node${value_hash}" [style=dashed]\n`
+			for (const returned_value of value.consumes) {
+				result += `"node${returned_value}" -> "node${value_hash}"\n`
 			}
 			return result
 		}
@@ -527,8 +664,8 @@ const do_ssa = filename => {
 //do_graphviz('offer-asset-for-algos.v2.teal')
 //do_graphviz('buy-asset-for-algos.teal')
 
-//do_ssa('offer-algos-for-asset.teal')
-//do_ssa('offer-asset-for-algos.teal')
-//do_ssa('buy-asset-for-algos.teal')
-//do_ssa('polynomial.teal')
-do_ssa('loop.teal')
+//do_ssa('randgallery/offer-algos-for-asset.teal')
+//do_ssa('randgallery/offer-asset-for-algos.teal')
+//do_ssa('randgallery/buy-asset-for-algos.teal')
+//do_ssa('tests/polynomial.teal')
+do_ssa('tests/loop.teal')

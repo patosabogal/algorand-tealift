@@ -470,7 +470,8 @@ const exec_program = (program, labels) => {
 				continue
 			}
 
-			region = { op: 'region', incoming: new Set([jump_destination.from_value_hash]) }
+			let label = program[instruction_idx].labels[0] || region_id.toString()
+			region = { op: 'region', incoming: new Set([jump_destination.from_value_hash]), label }
 			last_sequence_point = ctx.add_value(region)
 			regions.set(instruction_idx, last_sequence_point)
 		}
@@ -610,8 +611,9 @@ const do_ssa = filename => {
 		ext_const: (value_hash, value) => `"node${value_hash}" [label="${value.name}: ${value.type}", shape=diamond]\n`,
 		phi: (value_hash, value) => {
 			let result = `"node${value_hash}" [label="ϕ", shape=circle]\n`
-			for (const [basic_block_idx, mapping_value_hash] of value.mapping) {
-				result += `"node${mapping_value_hash}" -> "node${value_hash}" [label="${basic_block_idx}"]\n`
+			for (const [region_id, mapping_value_hash] of value.mapping) {
+				const region = values.get(program.length + region_id + 1)
+				result += `"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`
 			}
 			result += `"node${value.control}" -> "node${value_hash}" [style=dashed]`
 			return result
@@ -619,7 +621,7 @@ const do_ssa = filename => {
 		// CFG Operations
 		start: (value_hash) => `"node${value_hash}" [label="Start", color=red]\n`,
 		region: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="Region", color=red]\n`
+			let result = `"node${value_hash}" [label="Region(${value.label})", color=red]\n`
 			for (const incoming_edge of value.incoming) {
 				const cfg_value = values.get(incoming_edge)
 				if (cfg_value.op === 'on')

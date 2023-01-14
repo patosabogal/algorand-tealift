@@ -2,64 +2,102 @@ const uint64 = 'uint64'
 const bytearray = '[]byte'
 const any = 'any'
 const next = ':next'
-const sig = ([desc]) => {
+const sig = (template_str) => {
+	const desc = String.raw(template_str)
 	const [pops_str, pushes_str] = desc.split('--')
 	const pops = pops_str.trim().split(/\s+/).filter(v => v != '')
 	const pushes = pushes_str.trim().split(/\s+/).filter(v => v != '')
 	const description = { pops, pushes }
 	return () => description
 }
+const assert = require('assert')
+const fail = assert.fail
 const txn_fields = require('./txn_fields')
+const txna_fields = require('./txna_fields')
+const asset_holding_fields = require('./asset_holding_fields')
+
+function binop(lhs, rhs, abstract_op, result) {
+	return {
+		signature: sig`${lhs} ${rhs} -- ${result}`,
+		next: () => [next],
+		exec(ctx) {
+			const rhs = ctx.pop()
+			const lhs = ctx.pop()
+			ctx.push({ op: abstract_op, rhs, lhs })
+			return ctx.resolve_label(next)
+		},
+	}
+}
 
 const isn = {
-	'!=': {
-		signature: sig`any any -- uint64`,
+	'==': binop(any, any, 'eq', uint64),
+	'!=': binop(any, any, 'ne', uint64),
+	'&&': binop(uint64, uint64, 'and', uint64),
+	'||': binop(uint64, uint64, 'or', uint64),
+	'+': binop(uint64, uint64, 'add', uint64),
+	'-': binop(uint64, uint64, 'sub', uint64),
+	'*': binop(uint64, uint64, 'mul', uint64),
+	'%': binop(uint64, uint64, 'mod', uint64),
+	'<': binop(uint64, uint64, 'lt', uint64),
+	'>': binop(uint64, uint64, 'gt', uint64),
+	'>=': binop(uint64, uint64, 'gt', uint64),
+	'<=': binop(uint64, uint64, 'gt', uint64),
+	'concat': binop(bytearray, bytearray, 'concat', bytearray),
+	'addw': {
+		signature: sig`uint64 uint64 -- uint64 uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: 'neq', rhs, lhs })
-			return ctx.resolve_label(next)
-		}
-	},
-	'&&': {
-		signature: sig`uint64 uint64 -- uint64`,
-		next: () => [next],
-		exec(ctx) {
-			const rhs = ctx.pop()
-			const lhs = ctx.pop()
-			ctx.push({ op: 'and', rhs, lhs })
-			return ctx.resolve_label(next)
-		},
-		graphviz: () => '&&',
-	},
-	'+': {
-		signature: sig`uint64 uint64 -- uint64`,
-		next: () => [next],
-		exec(ctx) {
-			const rhs = ctx.pop()
-			const lhs = ctx.pop()
-			ctx.push({ op: 'add', rhs, lhs })
+			ctx.push({ op: 'add_high', rhs, lhs })
+			ctx.push({ op: 'add_low', rhs, lhs })
 			return ctx.resolve_label(next)
 		},
 	},
-	'<': {
-		signature: sig`uint64 uint64 -- uint64`,
+	'mulw': {
+		signature: sig`uint64 uint64 -- uint64 uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: 'le', rhs, lhs })
+			ctx.push({ op: 'mul_high', rhs, lhs })
+			ctx.push({ op: 'mul_low', rhs, lhs })
 			return ctx.resolve_label(next)
 		},
 	},
-	'==': {
-		signature: sig`any any -- uint64`,
+	'!': {
+		signature: sig`uint64 -- uint64`,
 		next: () => [next],
 		exec(ctx) {
-			const rhs = ctx.pop()
-			const lhs = ctx.pop()
-			ctx.push({ op: 'eq', rhs, lhs })
+			const value = ctx.pop()
+			ctx.push({ op: 'not', consumes: { value } })
+			return ctx.resolve_label(next)
+		},
+	},
+	'btoi': {
+		signature: sig`[]byte -- uint64`,
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'cast', type: uint64, value })
+			return ctx.resolve_label(next)
+		},
+	},
+	'itob': {
+		signature: sig`uint64 -- []byte`,
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'cast', type: bytearray, value })
+			return ctx.resolve_label(next)
+		},
+	},
+	'sha512_256': {
+		signature: sig`[]byte -- []byte`,
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'hash', algo: 'sha512_256', consumes: { value } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -68,6 +106,17 @@ const isn = {
 		next: (_target) => [next],
 		exec(value, ctx) {
 			ctx.push({ op: 'const', type: bytearray, value })
+			return ctx.resolve_label(next)
+		},
+	},
+	'byte': {
+		signature: sig`-- []byte`,
+		next: (_target) => [next],
+		exec(...args) {
+			const ctx = args[args.length - 1]
+			const instruction_params = args.slice(0, -1)
+			// FIXME: Parse value
+			ctx.push({ op: 'const', type: bytearray, value: instruction_params.join(' ').replaceAll('"', '\\"') })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -100,14 +149,21 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	'pop': {
+		signature: sig`any --`,
+		next: () => [next],
+		exec(ctx) {
+			ctx.pop()
+			return ctx.resolve_label(next)
+		}
+	},
 	'err': {
 		signature: sig`--`,
 		next: (_target) => [],
 		exec() {
 			return {
 				kind: 'exit',
-				label: 'err',
-				consumes: []
+				label: 'err'
 			}
 		},
 	},
@@ -129,6 +185,36 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	'txn': {
+		// -- any
+		signature: (_txn, field) => ({ pops: 0, pushes: txn_fields[field].type || any }),
+		next: (_txn, _field) => [next],
+		exec(field, ctx) {
+			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `txn.${field}` })
+			return ctx.resolve_label(next)
+		},
+	},
+	'txna': {
+		// -- any
+		signature: (field, _idx) => ({ pops: 0, pushes: txna_fields[field].type || any }),
+		next: (_field, _idx) => [next],
+		exec(field, idx, ctx) {
+			ctx.push({ op: 'ext_const', type: txna_fields[field].type || any, name: `txn.${field}[${idx}]` })
+			return ctx.resolve_label(next)
+		},
+	},
+	'asset_holding_get': {
+		// []byte uint64 -- any
+		signature: (field) => ({ pops: 2, pushes: asset_holding_fields[field].type || any }),
+		next: (_field) => [next],
+		exec(field, ctx) {
+			const asset = ctx.pop()
+			const account = ctx.pop()
+			ctx.push({ op: 'ext_const', type: asset_holding_fields[field].type || any, name: `Asset.${field}`, consumes: { account, asset } })
+			ctx.push({ op: 'opted_in', account, asset })
+			return ctx.resolve_label(next)
+		},
+	},
 	'int': {
 		signature: sig`-- uint64`,
 		next: (_target) => [next],
@@ -141,18 +227,98 @@ const isn = {
 		signature: sig`uint64 --`,
 		next: (_target) => [],
 		exec(ctx) {
-			const return_value = ctx.pop()
+			const value = ctx.pop()
 			return {
 				kind: 'exit',
 				label: 'return',
-				consumes: [return_value]
+				consumes: { value }
 			}
+		},
+	},
+	'app_global_get': {
+		signature: sig`byte[] -- any`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const key = ctx.pop()
+			ctx.push({ op: 'global_load', type: any, name: 'Global', key, control: ctx.last_sequence_point })
+			return ctx.resolve_label(next)
+		},
+	},
+	'app_local_get': {
+		signature: sig`uint64 byte[] -- any`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const key = ctx.pop()
+			const account = ctx.pop()
+			ctx.push({ op: 'local_load', type: any, name: 'Local', account, key, control: ctx.last_sequence_point })
+			return ctx.resolve_label(next)
+		},
+	},
+	'app_global_put': {
+		signature: sig`byte[] any --`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			const key = ctx.pop()
+			ctx.sequence_point('Store Global', { key, value })
+			return ctx.resolve_label(next)
+		},
+	},
+	'app_local_put': {
+		signature: sig`uint64 byte[] any --`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			const key = ctx.pop()
+			const account = ctx.pop()
+			ctx.sequence_point('Store Local', { account, key, value })
+			return ctx.resolve_label(next)
+		},
+	},
+	'app_global_del': {
+		signature: sig`byte[] --`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const key = ctx.pop()
+			ctx.sequence_point('Delete Global', { key })
+			return ctx.resolve_label(next)
+		},
+	},
+	'app_local_del': {
+		signature: sig`uint64 byte[] --`,
+		next: (_target) => [next],
+		exec(ctx) {
+			const key = ctx.pop()
+			const account = ctx.pop()
+			ctx.sequence_point('Delete Global', { account, key })
+			return ctx.resolve_label(next)
+		},
+	},
+	'load': {
+		signature: sig`-- any`,
+		next: (_target) => [next],
+		exec(key, ctx) {
+			// FIXME: We should SSA these
+			const sequence_point = ctx.sequence_point()
+			ctx.push({ op: 'scratch_load', key, control: sequence_point })
+			return ctx.resolve_label(next)
+		},
+	},
+	'store': {
+		signature: sig`any --`,
+		next: (_target) => [next],
+		exec(key, ctx) {
+			// FIXME: We should SSA these
+			const value = ctx.pop()
+			ctx.sequence_point(`Store Scratch(${key})`, { value })
+			return ctx.resolve_label(next)
 		},
 	},
 }
 
 const parse = (filename, contents) =>
-	contents
+	// Each program ends up with an implict return
+	(contents + "\nreturn\n")
 		.split('\n')
 		// Remove comments
 		.map(v => v.replace(/\/\/.*$/, ''))
@@ -232,10 +398,6 @@ function* range(from, to, step) {
 		step = 1
 	for (let i = from; i < to; i += step)
 		yield i
-}
-
-const assert = (condition, message) => {
-	if (!condition) throw new Error(message)
 }
 
 const get_list = (map, key) => {
@@ -443,8 +605,8 @@ const exec_program = (program, labels) => {
 				values.set(phi_hash, { op: 'phi', mapping: new Map(), control: region_value_hash })
 				return phi_hash
 			},
-			sequence_point() {
-				last_sequence_point = this.add_value({ op: 'sequence_point', prev: last_sequence_point })
+			sequence_point(label, consumes) {
+				last_sequence_point = this.add_value({ op: 'sequence_point', control: last_sequence_point, label, consumes })
 				return last_sequence_point
 			},
 			add_value(value) {
@@ -459,6 +621,9 @@ const exec_program = (program, labels) => {
 				assert(label_idx !== undefined, `Destination for label '${label}' not found!`)
 				assert(label_idx < program.length, 'Program control fell out of bounds!')
 				return { kind: 'jump', label: case_name, instruction_idx: label_idx }
+			},
+			get last_sequence_point() {
+				return last_sequence_point
 			}
 		}
 
@@ -479,19 +644,19 @@ const exec_program = (program, labels) => {
 
 		while (true) {
 			const instruction = program[instruction_idx]
-			const successors = isn[instruction.operation].exec(...instruction.args, ctx)
+			const successors = isn[instruction.operation]?.exec(...instruction.args, ctx) || fail('Unknown operation: ' + instruction.operation)
 
 			if (successors.kind === 'exit') {
-				last_sequence_point = ctx.add_value({ op: 'exit', prev: last_sequence_point, label: successors.label, consumes: successors.consumes })
+				last_sequence_point = ctx.add_value({ op: 'exit', control: last_sequence_point, label: successors.label, consumes: successors.consumes })
 				region_successors.set(region_id, [])
 				break
 			}
 
 			if (successors.kind === 'switch') {
-				last_sequence_point = ctx.add_value({ op: 'switch', prev: last_sequence_point, condition: successors.condition })
+				last_sequence_point = ctx.add_value({ op: 'switch', control: last_sequence_point, condition: successors.condition })
 
 				for (const alternative of successors.alternatives) {
-					const projection_hash = ctx.add_value({ op: 'on', prev: last_sequence_point, label: alternative.label })
+					const projection_hash = ctx.add_value({ op: 'on', control: last_sequence_point, label: alternative.label })
 					instruction_queue.push({ from_value_hash: projection_hash, to_instruction_idx: alternative.instruction_idx })
 				}
 				region_successors.set(region_id, successors.alternatives.map(v => v.instruction_idx))
@@ -602,20 +767,48 @@ const do_ssa = filename => {
 		+ `"node${value.lhs}" -> "node${value_hash}"\n`
 		+ `"node${value.rhs}" -> "node${value_hash}"\n`
 	const ssa_operations = {
-		neq: binop('!='),
 		and: binop('&&'),
+		or: binop('||'),
 		add: binop('+'),
+		sub: binop('-'),
+		mul: binop('*'),
+		lt: binop('<'),
+		gt: binop('>'),
 		le: binop('<'),
+		ge: binop('>'),
+		ne: binop('!='),
 		eq: binop('=='),
+		not: (value_hash, value) => `"node${value_hash}" [label="Not"]`,
+		concat: binop('Concat'),
+		cast: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="As ${value.type}"]\n`
+			result += `"node${value.value}" -> "node${value_hash}"\n`
+			return result
+		},
 		const: (value_hash, value) => `"node${value_hash}" [label="${value.value}: ${value.type}", shape=rectangle]\n`,
 		ext_const: (value_hash, value) => `"node${value_hash}" [label="${value.name}: ${value.type}", shape=diamond]\n`,
+		global_load: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="Load Global", shape=diamond]\n`
+			result += `"node${value.key}" -> "node${value_hash}"\n`
+			return result
+		},
+		local_load: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="Load Local", shape=diamond]\n`
+			result += `"node${value.account}" -> "node${value_hash}"\n`
+			result += `"node${value.key}" -> "node${value_hash}"\n`
+			return result
+		},
+		scratch_load: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="Load Scratch(${value.key})", shape=diamond]\n`
+			return result
+		},
+		hash: (value_hash, value) => `node${value_hash} [label="Hash ${value.algo}"]\n`,
 		phi: (value_hash, value) => {
 			let result = `"node${value_hash}" [label="ϕ", shape=circle]\n`
 			for (const [region_id, mapping_value_hash] of value.mapping) {
 				const region = values.get(program.length + region_id + 1)
 				result += `"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`
 			}
-			result += `"node${value.control}" -> "node${value_hash}" [style=dashed]`
 			return result
 		},
 		// CFG Operations
@@ -625,7 +818,7 @@ const do_ssa = filename => {
 			for (const incoming_edge of value.incoming) {
 				const cfg_value = values.get(incoming_edge)
 				if (cfg_value.op === 'on')
-					result += `"node${cfg_value.prev}" -> "node${value_hash}" [label="${cfg_value.label}", style=dashed]\n`
+					result += `"node${cfg_value.control}" -> "node${value_hash}" [label="${cfg_value.label}", style=dashed]\n`
 				else
 					result += `"node${incoming_edge}" -> "node${value_hash}" [style=dashed]\n`
 			}
@@ -634,24 +827,33 @@ const do_ssa = filename => {
 		switch: (value_hash, value) => {
 			let result = `"node${value_hash}" [label="Switch", color=red]\n`
 			result += `"node${value.condition}" -> "node${value_hash}"\n`
-			result += `"node${value.prev}" -> "node${value_hash}" [style=dashed]\n`
 			return result
 		},
 		on: () => { return '' },
 		exit: (value_hash, value) => {
 			let result = `"node${value_hash}" [label="${value.label}", color=red]\n`
-			result += `"node${value.prev}" -> "node${value_hash}" [style=dashed]\n`
-			for (const returned_value of value.consumes) {
-				result += `"node${returned_value}" -> "node${value_hash}"\n`
-			}
 			return result
-		}
+		},
+		sequence_point: (value_hash, value) => {
+			let result = `"node${value_hash}" [label="${value.label || ''}", color=red]\n`
+			return result
+		},
+	}
+	function default_printer(value_hash, value) {
+		return `"node${value_hash}" [label=${value.op}, color=blue]`
 	}
 	console.log('//', filename)
 	console.log('digraph {')
 	console.log('rankdir=LR')
 	for (const [value_hash, value_repr] of values) {
-		console.log(ssa_operations[value_repr.op](value_hash, value_repr))
+		const ssa_op = ssa_operations[value_repr.op] || default_printer
+		if (ssa_op === default_printer) console.error(`Unknown abstract operation ${value_repr.op}, using default printer`)
+		console.log(ssa_op(value_hash, value_repr))
+		if (value_repr.consumes !== undefined)
+			for (const [key, consumed_value] of Object.entries(value_repr.consumes))
+				console.log(`"node${consumed_value}" -> "node${value_hash}" [label="${key}"]`)
+		if (value_repr.control && value_repr.op !== 'on')
+			console.log(`"node${value_repr.control}" -> "node${value_hash}" [style=dashed]\n`)
 	}
 	console.log('}')
 }
@@ -667,7 +869,10 @@ const do_ssa = filename => {
 //do_graphviz('buy-asset-for-algos.teal')
 
 //do_ssa('randgallery/offer-algos-for-asset.teal')
-//do_ssa('randgallery/offer-asset-for-algos.teal')
+do_ssa('randgallery/offer-asset-for-algos.teal')
 //do_ssa('randgallery/buy-asset-for-algos.teal')
 //do_ssa('tests/polynomial.teal')
-do_ssa('tests/loop.teal')
+//do_ssa('tests/loop.teal')
+//do_ssa('stateful-teal-auction-demo/sovauc_clear.teal')
+//do_ssa('stateful-teal-auction-demo/sovauc_escrow_tmpl.teal')
+//do_ssa('stateful-teal-auction-demo/sovauc_approve.teal')

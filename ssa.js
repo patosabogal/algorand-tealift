@@ -23,7 +23,7 @@ function binop(lhs, rhs, abstract_op, result) {
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: abstract_op, rhs, lhs })
+			ctx.push({ op: abstract_op, consumes: { rhs, lhs } })
 			return ctx.resolve_label(next)
 		},
 	}
@@ -49,8 +49,8 @@ const isn = {
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: 'add_high', rhs, lhs })
-			ctx.push({ op: 'add_low', rhs, lhs })
+			ctx.push({ op: 'add_high', consumes: { rhs, lhs } })
+			ctx.push({ op: 'add_low',  consumes: { rhs, lhs } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -60,8 +60,8 @@ const isn = {
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: 'mul_high', rhs, lhs })
-			ctx.push({ op: 'mul_low', rhs, lhs })
+			ctx.push({ op: 'mul_high', consumes: { rhs, lhs } })
+			ctx.push({ op: 'mul_low',  consumes: { rhs, lhs } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -79,7 +79,7 @@ const isn = {
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
-			ctx.push({ op: 'cast', type: uint64, value })
+			ctx.push({ op: 'cast', type: uint64, consumes: { value } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -88,7 +88,7 @@ const isn = {
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
-			ctx.push({ op: 'cast', type: bytearray, value })
+			ctx.push({ op: 'cast', type: bytearray, consumes: { value } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -134,7 +134,7 @@ const isn = {
 			const condition = ctx.pop()
 			return {
 				kind: 'switch',
-				condition,
+				consumes: { condition },
 				alternatives: [ctx.resolve_label(next, 'zero'), ctx.resolve_label(label, 'non-zero')]
 			}
 		},
@@ -211,7 +211,7 @@ const isn = {
 			const asset = ctx.pop()
 			const account = ctx.pop()
 			ctx.push({ op: 'ext_const', type: asset_holding_fields[field].type || any, name: `Asset.${field}`, consumes: { account, asset } })
-			ctx.push({ op: 'opted_in', account, asset })
+			ctx.push({ op: 'opted_in', consumes: { account, asset } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -240,7 +240,7 @@ const isn = {
 		next: (_target) => [next],
 		exec(ctx) {
 			const key = ctx.pop()
-			ctx.push({ op: 'global_load', type: any, name: 'Global', key, control: ctx.last_sequence_point })
+			ctx.push({ op: 'global_load', type: any, name: 'Global', consumes: { key } , control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -250,7 +250,7 @@ const isn = {
 		exec(ctx) {
 			const key = ctx.pop()
 			const account = ctx.pop()
-			ctx.push({ op: 'local_load', type: any, name: 'Local', account, key, control: ctx.last_sequence_point })
+			ctx.push({ op: 'local_load', type: any, name: 'Local', consumes: { key, account }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -602,11 +602,11 @@ const exec_program = (program, labels) => {
 					return symbolic_stack.pop()
 
 				const phi_hash = program.length * -++used_from_caller + region_id
-				values.set(phi_hash, { op: 'phi', mapping: new Map(), control: region_value_hash })
+				values.set(phi_hash, { op: 'phi', consumes: {}, control: region_value_hash })
 				return phi_hash
 			},
 			sequence_point(label, consumes) {
-				last_sequence_point = this.add_value({ op: 'sequence_point', control: last_sequence_point, label, consumes })
+				last_sequence_point = this.add_value({ op: 'sequence_point', consumes, control: last_sequence_point, label })
 				return last_sequence_point
 			},
 			add_value(value) {
@@ -653,7 +653,7 @@ const exec_program = (program, labels) => {
 			}
 
 			if (successors.kind === 'switch') {
-				last_sequence_point = ctx.add_value({ op: 'switch', control: last_sequence_point, condition: successors.condition })
+				last_sequence_point = ctx.add_value({ op: 'switch', control: last_sequence_point, consumes: successors.consumes })
 
 				for (const alternative of successors.alternatives) {
 					const projection_hash = ctx.add_value({ op: 'on', control: last_sequence_point, label: alternative.label })
@@ -691,7 +691,7 @@ const exec_program = (program, labels) => {
 				const phi_hash = program.length * -(idx + 1) + successor_idx
 				const phi_value = values.get(phi_hash)
 				if (phi_value !== undefined)
-					phi_value.mapping.set(region_id, value_hash)
+					phi_value.consumes[region_id] = value_hash
 			}
 		}
 	}
@@ -713,7 +713,7 @@ const exec_program = (program, labels) => {
 					const phi_hash = program.length * -(idx + 1) + region_id
 					let phi_value = values.get(phi_hash)
 					if (phi_value === undefined) {
-						phi_value = { op: 'phi', mapping: new Map(), control: program.length + region_id + 1 /* Hash for the first value of the region */ }
+						phi_value = { op: 'phi', consumes: {}, control: program.length + region_id + 1 /* Hash for the first value of the region */ }
 						values.set(phi_hash, phi_value)
 					}
 
@@ -723,8 +723,8 @@ const exec_program = (program, labels) => {
 						last_loop_did_change_something = true
 					}
 
-					if (!phi_value.mapping.has(predecessor_id)) {
-						phi_value.mapping.set(predecessor_id, value_hash)
+					if (phi_value.consumes[predecessor_id] === undefined) {
+						phi_value.consumes[predecessor_id] = value_hash
 						last_loop_did_change_something = true
 					}
 				}
@@ -762,55 +762,34 @@ const do_ssa = filename => {
 	const [program, labels] = process_file(filename)
 	const values = exec_program(program, labels)
 
-	const binop = (label) => (value_hash, value) =>
-		`node${value_hash} [label="${label}"]\n`
-		+ `"node${value.lhs}" -> "node${value_hash}"\n`
-		+ `"node${value.rhs}" -> "node${value_hash}"\n`
+	const binop = (label) => (value_hash, _value) => `node${value_hash} [label="${label}", shape=circle]\n`
 	const ssa_operations = {
 		and: binop('&&'),
 		or: binop('||'),
 		add: binop('+'),
 		sub: binop('-'),
 		mul: binop('*'),
+		mod: binop('%'),
 		lt: binop('<'),
 		gt: binop('>'),
 		le: binop('<'),
 		ge: binop('>'),
 		ne: binop('!='),
 		eq: binop('=='),
-		not: (value_hash, value) => `"node${value_hash}" [label="Not"]`,
+		mul_high: binop('* high'),
+		mul_low: binop('* low'),
+		add_high: binop('+ low'),
+		add_low: binop('+ low'),
+		not: (value_hash, _value) => `"node${value_hash}" [label="Not"]`,
 		concat: binop('Concat'),
-		cast: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="As ${value.type}"]\n`
-			result += `"node${value.value}" -> "node${value_hash}"\n`
-			return result
-		},
+		cast: (value_hash, value) => `"node${value_hash}" [label="As ${value.type}"]\n`,
 		const: (value_hash, value) => `"node${value_hash}" [label="${value.value}: ${value.type}", shape=rectangle]\n`,
 		ext_const: (value_hash, value) => `"node${value_hash}" [label="${value.name}: ${value.type}", shape=diamond]\n`,
-		global_load: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="Load Global", shape=diamond]\n`
-			result += `"node${value.key}" -> "node${value_hash}"\n`
-			return result
-		},
-		local_load: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="Load Local", shape=diamond]\n`
-			result += `"node${value.account}" -> "node${value_hash}"\n`
-			result += `"node${value.key}" -> "node${value_hash}"\n`
-			return result
-		},
-		scratch_load: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="Load Scratch(${value.key})", shape=diamond]\n`
-			return result
-		},
+		global_load: (value_hash, _value) => `"node${value_hash}" [label="Load Global", shape=diamond]\n`,
+		local_load: (value_hash, _value) => `"node${value_hash}" [label="Load Local", shape=diamond]\n`,
+		scratch_load: (value_hash, value) => `"node${value_hash}" [label="Load Scratch(${value.key})", shape=diamond]\n`,
 		hash: (value_hash, value) => `node${value_hash} [label="Hash ${value.algo}"]\n`,
-		phi: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="ϕ", shape=circle]\n`
-			for (const [region_id, mapping_value_hash] of value.mapping) {
-				const region = values.get(program.length + region_id + 1)
-				result += `"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`
-			}
-			return result
-		},
+		phi: (value_hash, _value) => `"node${value_hash}" [label="ϕ", shape=circle]\n`,
 		// CFG Operations
 		start: (value_hash) => `"node${value_hash}" [label="Start", color=red]\n`,
 		region: (value_hash, value) => {
@@ -824,20 +803,10 @@ const do_ssa = filename => {
 			}
 			return result
 		},
-		switch: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="Switch", color=red]\n`
-			result += `"node${value.condition}" -> "node${value_hash}"\n`
-			return result
-		},
+		switch: (value_hash, _value) => `"node${value_hash}" [label="Switch", color=red]\n`,
 		on: () => { return '' },
-		exit: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="${value.label}", color=red]\n`
-			return result
-		},
-		sequence_point: (value_hash, value) => {
-			let result = `"node${value_hash}" [label="${value.label || ''}", color=red]\n`
-			return result
-		},
+		exit: (value_hash, value) => `"node${value_hash}" [label="${value.label}", color=red]\n`,
+		sequence_point: (value_hash, value) => `"node${value_hash}" [label="${value.label || ''}", color=red]\n`,
 	}
 	function default_printer(value_hash, value) {
 		return `"node${value_hash}" [label=${value.op}, color=blue]`
@@ -849,10 +818,16 @@ const do_ssa = filename => {
 		const ssa_op = ssa_operations[value_repr.op] || default_printer
 		if (ssa_op === default_printer) console.error(`Unknown abstract operation ${value_repr.op}, using default printer`)
 		console.log(ssa_op(value_hash, value_repr))
-		if (value_repr.consumes !== undefined)
+		if (value_repr.op !== 'phi' && value_repr.consumes !== undefined)
 			for (const [key, consumed_value] of Object.entries(value_repr.consumes))
 				console.log(`"node${consumed_value}" -> "node${value_hash}" [label="${key}"]`)
-		if (value_repr.control && value_repr.op !== 'on')
+		if (value_repr.op === 'phi')
+			for (const [region_id_key, mapping_value_hash] of Object.entries(value_repr.consumes)) {
+				const region_id = parseInt(region_id_key)
+				const region = values.get(program.length + region_id + 1)
+				console.log(`"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`)
+			}
+		if (value_repr.op !== 'on' && value_repr.control)
 			console.log(`"node${value_repr.control}" -> "node${value_hash}" [style=dashed]\n`)
 	}
 	console.log('}')

@@ -221,7 +221,7 @@ const isn = {
 		}
 	},
 	'uncover': {
-		// `... n items ... any -- any ... n items ...
+		// `any ... n items ... -- ... n items ... any
 		signature: (amount) => {
 			amount = parseInt(amount)
 			return { pops: amount, pushes: amount }

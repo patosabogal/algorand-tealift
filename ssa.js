@@ -16,14 +16,14 @@ const txn_fields = require('./txn_fields')
 const txna_fields = require('./txna_fields')
 const asset_holding_fields = require('./asset_holding_fields')
 
-function binop(lhs, rhs, abstract_op, result) {
+function binop(lhs, rhs, abstract_op, result, variant='none') {
 	return {
 		signature: sig`${lhs} ${rhs} -- ${result}`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
 			const lhs = ctx.pop()
-			ctx.push({ op: abstract_op, consumes: { rhs, lhs } })
+			ctx.push({ op: abstract_op, consumes: { rhs, lhs }, variant })
 			return ctx.resolve_label(next)
 		},
 	}
@@ -34,14 +34,23 @@ const isn = {
 	'!=': binop(any, any, 'ne', uint64),
 	'&&': binop(uint64, uint64, 'and', uint64),
 	'||': binop(uint64, uint64, 'or', uint64),
-	'+': binop(uint64, uint64, 'add', uint64),
-	'-': binop(uint64, uint64, 'sub', uint64),
-	'*': binop(uint64, uint64, 'mul', uint64),
+	'+': binop(uint64, uint64, 'add', uint64, 'uint64'),
+	'-': binop(uint64, uint64, 'sub', uint64, 'uint64'),
+	'*': binop(uint64, uint64, 'mul', uint64, 'uint64'),
 	'%': binop(uint64, uint64, 'mod', uint64),
-	'<': binop(uint64, uint64, 'lt', uint64),
-	'>': binop(uint64, uint64, 'gt', uint64),
-	'>=': binop(uint64, uint64, 'gt', uint64),
-	'<=': binop(uint64, uint64, 'gt', uint64),
+	'&': binop(uint64, uint64, 'bitand', uint64, 'uint64'),
+	'<': binop(uint64, uint64, 'lt', uint64, 'uint64'),
+	'>': binop(uint64, uint64, 'gt', uint64, 'uint64'),
+	'>=': binop(uint64, uint64, 'gt', uint64, 'uint64'),
+	'<=': binop(uint64, uint64, 'gt', uint64, 'uint64'),
+	'b+': binop(bytearray, bytearray, 'add', bytearray, '[]byte'),
+	'b-': binop(bytearray, bytearray, 'sub', bytearray, '[]byte'),
+	'b*': binop(bytearray, bytearray, 'mul', bytearray, '[]byte'),
+	'b&': binop(bytearray, bytearray, 'bitand', bytearray, '[]byte'),
+	'b<': binop(uint64, bytearray, 'lt', bytearray, '[]byte'),
+	'b>': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
+	'b>=': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
+	'b<=': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
 	'concat': binop(bytearray, bytearray, 'concat', bytearray),
 	'addw': {
 		signature: sig`uint64 uint64 -- uint64 uint64`,
@@ -120,6 +129,17 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	'pushbytes': {
+		signature: sig`-- []byte`,
+		next: (_target) => [next],
+		exec(...args) {
+			const ctx = args[args.length - 1]
+			const instruction_params = args.slice(0, -1)
+			// FIXME: Parse value
+			ctx.push({ op: 'const', type: bytearray, value: instruction_params.join(' ').replaceAll('"', '\\"') })
+			return ctx.resolve_label(next)
+		},
+	},
 	'b': {
 		signature: sig`--`,
 		next: (label) => [label],
@@ -146,6 +166,92 @@ const isn = {
 			const value_handle = ctx.pop()
 			ctx.push_handle(value_handle)
 			ctx.push_handle(value_handle)
+			return ctx.resolve_label(next)
+		}
+	},
+	'swap': {
+		signature: sig`any any -- any any`,
+		next: () => [next],
+		exec(ctx) {
+			const a = ctx.pop()
+			const b = ctx.pop()
+			ctx.push_handle(a)
+			ctx.push_handle(b)
+			return ctx.resolve_label(next)
+		}
+	},
+	'dig': {
+		// `any ... n items ... -- any ... n items ... any
+		signature: (amount) => {
+			amount = parseInt(amount)
+			return { pops: amount + 1, pushes: amount + 2 }
+		},
+		next: (_amount) => [next],
+		exec(amount, ctx) {
+			amount = parseInt(amount)
+
+			const stack = []
+			while (0 <= amount--)
+				stack.unshift(ctx.pop())
+			for (const v of stack)
+				ctx.push_handle(v)
+			ctx.push_handle(stack[0])
+			return ctx.resolve_label(next)
+		}
+	},
+	'cover': {
+		// `... n items ... any -- any ... n items ...
+		signature: (amount) => {
+			amount = parseInt(amount)
+			return { pops: amount, pushes: amount }
+		},
+		next: (_amount) => [next],
+		exec(amount, ctx) {
+			amount = parseInt(amount)
+
+			const stack = []
+			while (0 < amount--)
+				stack.unshift(ctx.pop())
+			if (stack.length > 0) {
+				stack.unshift(stack.pop())
+				for (const v of stack)
+					ctx.push_handle(v)
+			}
+			return ctx.resolve_label(next)
+		}
+	},
+	'uncover': {
+		// `... n items ... any -- any ... n items ...
+		signature: (amount) => {
+			amount = parseInt(amount)
+			return { pops: amount, pushes: amount }
+		},
+		next: (_amount) => [next],
+		exec(amount, ctx) {
+			amount = parseInt(amount)
+
+			const stack = []
+			while (0 < amount--)
+				stack.unshift(ctx.pop())
+			if (stack.length > 0) {
+				stack.push(stack.shift())
+				for (const v of stack)
+					ctx.push_handle(v)
+			}
+			return ctx.resolve_label(next)
+		}
+	},
+	// FIXME: Is this the correct model?
+	// Maybe we should use abstract get/set with bit and byte variants
+	'getbyte': binop(uint64, bytearray, 'getbyte', uint64),
+	'setbyte': {
+		signature: sig`[]byte uint64 uint64 -- []byte`,
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			const index = ctx.pop()
+			const bytes = ctx.pop()
+			ctx.push({ op: 'setbyte', consumes: { bytes, index, value } })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -844,10 +950,17 @@ const do_ssa = filename => {
 //do_graphviz('buy-asset-for-algos.teal')
 
 //do_ssa('randgallery/offer-algos-for-asset.teal')
-do_ssa('randgallery/offer-asset-for-algos.teal')
+//do_ssa('randgallery/offer-asset-for-algos.teal')
 //do_ssa('randgallery/buy-asset-for-algos.teal')
 //do_ssa('tests/polynomial.teal')
 //do_ssa('tests/loop.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_clear.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_escrow_tmpl.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_approve.teal')
+
+//do_ssa('tests/dig.teal')
+//do_ssa('tests/cover.teal')
+//do_ssa('tests/uncover.teal')
+//do_ssa('tests/getbyte_setbyte.teal')
+
+//do_ssa('cube/cube.teal')

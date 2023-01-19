@@ -530,109 +530,6 @@ const dump_program = program =>
 		v.labels.forEach(label => console.log(`     | ${label}:`))
 		console.log(format_instruction(v))
 	})
-const dump_labels = (labels, program) =>
-	labels.forEach((idx, key) =>
-		console.log(`Label ${key} points to line ${program[idx].linenum}`))
-const dump_basic_blocks = (basic_blocks, successors, program) => {
-	for (const [basic_block, basic_block_idx] of enumerate(basic_blocks)) {
-		console.log('Basic Block', basic_block_idx)
-		dump_program(basic_block.map(idx => program[idx]))
-		console.log('Successors:')
-		for (const successor_idx of get_list(successors, basic_block_idx)) {
-			console.log('  Basic Block', successor_idx)
-		}
-		console.log('--------- --------- ---------')
-	}
-}
-const dump_graphviz = (basic_blocks, successors, program) => {
-	console.log('digraph {')
-	for (const [basic_block, basic_block_idx] of enumerate(basic_blocks)) {
-		const instructions = basic_block.map(idx => program[idx])
-		let bb_text = `Basic Block ${basic_block_idx}\\l`
-		bb_text += ''.padStart(bb_text.length, '-') + '\\l'
-		for (const instruction of instructions) {
-			for (const label of instruction.labels)
-				bb_text += `     | ${label}:\\l`
-			bb_text += format_instruction(instruction) + '\\l'
-		}
-		console.log(`  bb${basic_block_idx} [label="${bb_text}", fontname=monospace, margin="0.2,0.1", shape=rectangle]`)
-		for (const successor_idx of get_list(successors, basic_block_idx)) {
-			console.log(`  bb${basic_block_idx} -> bb${successor_idx}`)
-		}
-	}
-	console.log('}')
-}
-
-const gather_basic_blocks = (program, labels) => {
-	assert(program.length !== 0, 'Program should have at least one instruction')
-
-	const successors_of = idx => {
-		const instruction = program[idx]
-		const successor_labels =
-			isn[instruction.operation]?.next(...instruction.args)
-			|| warn_and_default(instruction)
-		return successor_labels.map(label => {
-			const label_idx = label === next
-				? idx + 1
-				: labels.get(label)
-			assert(label_idx !== undefined, `Destination for label '${label}' not found!`)
-			assert(label_idx < program.length, 'Program control fell out of bounds!')
-			return label_idx
-		})
-	}
-
-	// Maps instruction_idx => previous_instruction_idx
-	const predecessors = new Map()
-	const predecessors_of = instruction_idx => get_list(predecessors, instruction_idx)
-	for (const predecessor_idx of range(program.length))
-		for (const successor_idx of successors_of(predecessor_idx))
-			predecessors_of(successor_idx).push(predecessor_idx)
-
-	// first instruction of basic block => [basic blocks]
-	const basic_block_predecessors = new Map()
-	const add_basic_block_predecessor = (instruction_idx, basic_block_predecessor_idx) =>
-		get_list(basic_block_predecessors, instruction_idx).push(basic_block_predecessor_idx)
-
-	const processed_basic_blocks = new Set()
-	const basic_blocks = []
-	let basic_block_queue = [0]
-	next_basic_block: while (basic_block_queue.length !== 0) {
-
-		let instruction_idx = basic_block_queue.pop()
-		if (processed_basic_blocks.has(instruction_idx)) {
-			continue next_basic_block
-		}
-		processed_basic_blocks.add(instruction_idx)
-
-		const basic_block_idx = basic_blocks.length
-		let basic_block = []
-		basic_blocks.push(basic_block)
-
-		do {
-			basic_block.push(instruction_idx)
-			const successors = successors_of(instruction_idx)
-			if (successors.length !== 1) {
-				for (const successor_idx of successors)
-					add_basic_block_predecessor(successor_idx, basic_block_idx)
-				basic_block_queue.push(...successors.reverse())
-				continue next_basic_block
-			}
-			instruction_idx = successors[0]
-		} while (predecessors_of(instruction_idx).length <= 1)
-
-		add_basic_block_predecessor(instruction_idx, basic_block_idx)
-		basic_block_queue.push(instruction_idx)
-	}
-
-	// basic block => [basic blocks]
-	const basic_block_successors = new Map()
-	for (const [basic_block, idx] of enumerate(basic_blocks)) {
-		for (const predecessor_idx of get_list(basic_block_predecessors, basic_block[0]))
-			get_list(basic_block_successors, predecessor_idx).push(idx)
-
-	}
-	return [basic_blocks, basic_block_successors]
-}
 
 const exec_program = (program, labels) => {
 	const constants = new Map()
@@ -851,19 +748,6 @@ const warn_and_default = (instruction) => {
 	return [next]
 }
 
-const do_test = filename => {
-	const [program, labels] = process_file(filename)
-
-	console.log(filename)
-	dump_basic_blocks(...gather_basic_blocks(program, labels), program)
-}
-
-const do_graphviz = filename => {
-	const [program, labels] = process_file(filename)
-
-	dump_graphviz(...gather_basic_blocks(program, labels), program)
-}
-
 const do_ssa = filename => {
 	const [program, labels] = process_file(filename)
 	const values = exec_program(program, labels)
@@ -939,28 +823,19 @@ const do_ssa = filename => {
 	console.log('}')
 }
 
-//do_test('offer-algos-for-asset.teal')
-//do_test('offer-asset-for-algos.teal')
-//do_test('buy-asset-for-algos.teal')
-//do_test('polynomial.teal')
-
-//do_graphviz('offer-algos-for-asset.teal')
-//do_graphviz('offer-asset-for-algos.teal')
-//do_graphviz('offer-asset-for-algos.v2.teal')
-//do_graphviz('buy-asset-for-algos.teal')
-
 //do_ssa('randgallery/offer-algos-for-asset.teal')
 //do_ssa('randgallery/offer-asset-for-algos.teal')
 //do_ssa('randgallery/buy-asset-for-algos.teal')
+
 //do_ssa('tests/polynomial.teal')
 //do_ssa('tests/loop.teal')
+//do_ssa('tests/dig.teal')
+//do_ssa('tests/cover.teal')
+do_ssa('tests/uncover.teal')
+//do_ssa('tests/getbyte_setbyte.teal')
+
 //do_ssa('stateful-teal-auction-demo/sovauc_clear.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_escrow_tmpl.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_approve.teal')
-
-//do_ssa('tests/dig.teal')
-//do_ssa('tests/cover.teal')
-//do_ssa('tests/uncover.teal')
-//do_ssa('tests/getbyte_setbyte.teal')
 
 //do_ssa('cube/cube.teal')

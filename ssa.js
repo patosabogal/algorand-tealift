@@ -2,23 +2,14 @@ const uint64 = 'uint64'
 const bytearray = '[]byte'
 const any = 'any'
 const next = ':next'
-const sig = (template_str) => {
-	const desc = String.raw(template_str)
-	const [pops_str, pushes_str] = desc.split('--')
-	const pops = pops_str.trim().split(/\s+/).filter(v => v != '')
-	const pushes = pushes_str.trim().split(/\s+/).filter(v => v != '')
-	const description = { pops, pushes }
-	return () => description
-}
 const assert = require('assert')
 const fail = assert.fail
 const txn_fields = require('./txn_fields')
 const txna_fields = require('./txna_fields')
 const asset_holding_fields = require('./asset_holding_fields')
 
-function binop(lhs, rhs, abstract_op, result, variant='none') {
+function binop(abstract_op, variant='none') {
 	return {
-		signature: sig`${lhs} ${rhs} -- ${result}`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
@@ -30,30 +21,34 @@ function binop(lhs, rhs, abstract_op, result, variant='none') {
 }
 
 const isn = {
-	'==': binop(any, any, 'eq', uint64),
-	'!=': binop(any, any, 'ne', uint64),
-	'&&': binop(uint64, uint64, 'and', uint64),
-	'||': binop(uint64, uint64, 'or', uint64),
-	'+': binop(uint64, uint64, 'add', uint64, 'uint64'),
-	'-': binop(uint64, uint64, 'sub', uint64, 'uint64'),
-	'*': binop(uint64, uint64, 'mul', uint64, 'uint64'),
-	'%': binop(uint64, uint64, 'mod', uint64),
-	'&': binop(uint64, uint64, 'bitand', uint64, 'uint64'),
-	'<': binop(uint64, uint64, 'lt', uint64, 'uint64'),
-	'>': binop(uint64, uint64, 'gt', uint64, 'uint64'),
-	'>=': binop(uint64, uint64, 'gt', uint64, 'uint64'),
-	'<=': binop(uint64, uint64, 'gt', uint64, 'uint64'),
-	'b+': binop(bytearray, bytearray, 'add', bytearray, '[]byte'),
-	'b-': binop(bytearray, bytearray, 'sub', bytearray, '[]byte'),
-	'b*': binop(bytearray, bytearray, 'mul', bytearray, '[]byte'),
-	'b&': binop(bytearray, bytearray, 'bitand', bytearray, '[]byte'),
-	'b<': binop(uint64, bytearray, 'lt', bytearray, '[]byte'),
-	'b>': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
-	'b>=': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
-	'b<=': binop(uint64, bytearray, 'gt', bytearray, '[]byte'),
-	'concat': binop(bytearray, bytearray, 'concat', bytearray),
+	// Signature: any any -- uint64
+	'==': binop('eq'),
+	'!=': binop('ne'),
+	// Signature: uint64 uint64 -- uint64
+	'&&': binop('and', uint64),
+	'||': binop('or', uint64),
+	'+': binop('add', uint64),
+	'-': binop('sub', uint64),
+	'*': binop('mul', uint64),
+	'%': binop('mod'),
+	'&': binop('bitand', uint64),
+	'<': binop('lt', uint64),
+	'>': binop('gt', uint64),
+	'>=': binop('gt', uint64),
+	'<=': binop('gt', uint64),
+	// Signature: []byte []byte -- []byte
+	'b+': binop('add', bytearray),
+	'b-': binop('sub', bytearray),
+	'b*': binop('mul', bytearray),
+	'b&': binop('bitand', bytearray),
+	'concat': binop('concat'),
+	// Signature: []byte []byte -- uint64
+	'b<': binop('lt', bytearray),
+	'b>': binop('gt', bytearray),
+	'b>=': binop('gt', bytearray),
+	'b<=': binop('gt', bytearray),
+	// Signature: uint64 uint64 -- uint64 uint64
 	'addw': {
-		signature: sig`uint64 uint64 -- uint64 uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
@@ -63,8 +58,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 uint64 -- uint64 uint64
 	'mulw': {
-		signature: sig`uint64 uint64 -- uint64 uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
@@ -74,8 +69,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 -- uint64
 	'!': {
-		signature: sig`uint64 -- uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -83,8 +78,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: []byte -- uint64
 	'btoi': {
-		signature: sig`[]byte -- uint64`,
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -92,8 +87,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 -- []byte
 	'itob': {
-		signature: sig`uint64 -- []byte`,
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -101,8 +96,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: []byte -- []byte
 	'sha512_256': {
-		signature: sig`[]byte -- []byte`,
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -110,16 +105,16 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- []byte
 	'addr': {
-		signature: sig`-- []byte`,
 		next: (_target) => [next],
 		exec(value, ctx) {
 			ctx.push({ op: 'const', type: bytearray, value })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- []byte
 	'byte': {
-		signature: sig`-- []byte`,
 		next: (_target) => [next],
 		exec(...args) {
 			const ctx = args[args.length - 1]
@@ -129,8 +124,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- []byte
 	'pushbytes': {
-		signature: sig`-- []byte`,
 		next: (_target) => [next],
 		exec(...args) {
 			const ctx = args[args.length - 1]
@@ -140,15 +135,15 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: --
 	'b': {
-		signature: sig`--`,
 		next: (label) => [label],
 		exec(label, ctx) {
 			return ctx.resolve_label(label, 'jump')
 		},
 	},
+	// Signature: uint64 --
 	'bnz': {
-		signature: sig`uint64 --`,
 		next: (label) => [label, next],
 		exec(label, ctx) {
 			const condition = ctx.pop()
@@ -159,8 +154,8 @@ const isn = {
 			}
 		},
 	},
+	// Signature: any -- any any
 	'dup': {
-		signature: sig`any -- any any`,
 		next: () => [next],
 		exec(ctx) {
 			const value_handle = ctx.pop()
@@ -169,8 +164,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: any any -- any any
 	'swap': {
-		signature: sig`any any -- any any`,
 		next: () => [next],
 		exec(ctx) {
 			const a = ctx.pop()
@@ -180,12 +175,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: any ... n items ... -- any ... n items ... any
 	'dig': {
-		// `any ... n items ... -- any ... n items ... any
-		signature: (amount) => {
-			amount = parseInt(amount)
-			return { pops: amount + 1, pushes: amount + 2 }
-		},
 		next: (_amount) => [next],
 		exec(amount, ctx) {
 			amount = parseInt(amount)
@@ -199,12 +190,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: ... n items ... any -- any ... n items ...
 	'cover': {
-		// `... n items ... any -- any ... n items ...
-		signature: (amount) => {
-			amount = parseInt(amount)
-			return { pops: amount, pushes: amount }
-		},
 		next: (_amount) => [next],
 		exec(amount, ctx) {
 			amount = parseInt(amount)
@@ -220,12 +207,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: any ... n items ... -- ... n items ... any
 	'uncover': {
-		// `any ... n items ... -- ... n items ... any
-		signature: (amount) => {
-			amount = parseInt(amount)
-			return { pops: amount, pushes: amount }
-		},
 		next: (_amount) => [next],
 		exec(amount, ctx) {
 			amount = parseInt(amount)
@@ -243,9 +226,10 @@ const isn = {
 	},
 	// FIXME: Is this the correct model?
 	// Maybe we should use abstract get/set with bit and byte variants
-	'getbyte': binop(uint64, bytearray, 'getbyte', uint64),
+	// Signature: []byte uint64 -- uint64
+	'getbyte': binop('getbyte'),
+	// Signature: []byte uint64 uint64 -- []byte
 	'setbyte': {
-		signature: sig`[]byte uint64 uint64 -- []byte`,
 		next: () => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -255,16 +239,16 @@ const isn = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: any --
 	'pop': {
-		signature: sig`any --`,
 		next: () => [next],
 		exec(ctx) {
 			ctx.pop()
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: --
 	'err': {
-		signature: sig`--`,
 		next: (_target) => [],
 		exec() {
 			return {
@@ -273,17 +257,16 @@ const isn = {
 			}
 		},
 	},
+	// Signature: -- any
 	'global': {
-		// FIXME: We can use a better type here
-		signature: sig`-- any`,
 		next: (_target) => [next],
 		exec(name, ctx) {
 			ctx.push({ op: 'ext_const', type: any, name: `global.${name}` })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- any
 	'gtxn': {
-		// -- any
 		signature: (_txn, field) => ({ pops: 0, pushes: txn_fields[field].type || any }),
 		next: (_txn, _field) => [next],
 		exec(txn, field, ctx) {
@@ -291,27 +274,24 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- any
 	'txn': {
-		// -- any
-		signature: (_txn, field) => ({ pops: 0, pushes: txn_fields[field].type || any }),
 		next: (_txn, _field) => [next],
 		exec(field, ctx) {
 			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `txn.${field}` })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- any
 	'txna': {
-		// -- any
-		signature: (field, _idx) => ({ pops: 0, pushes: txna_fields[field].type || any }),
 		next: (_field, _idx) => [next],
 		exec(field, idx, ctx) {
 			ctx.push({ op: 'ext_const', type: txna_fields[field].type || any, name: `txn.${field}[${idx}]` })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: []byte uint64 -- any
 	'asset_holding_get': {
-		// []byte uint64 -- any
-		signature: (field) => ({ pops: 2, pushes: asset_holding_fields[field].type || any }),
 		next: (_field) => [next],
 		exec(field, ctx) {
 			const asset = ctx.pop()
@@ -321,16 +301,16 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- uint64
 	'int': {
-		signature: sig`-- uint64`,
 		next: (_target) => [next],
 		exec(value, ctx) {
 			ctx.push({ op: 'const', type: uint64, value: parseInt(value) || value })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 --
 	'return': {
-		signature: sig`uint64 --`,
 		next: (_target) => [],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -341,8 +321,8 @@ const isn = {
 			}
 		},
 	},
+	// Signature: byte[] -- any
 	'app_global_get': {
-		signature: sig`byte[] -- any`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const key = ctx.pop()
@@ -350,8 +330,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 byte[] -- any
 	'app_local_get': {
-		signature: sig`uint64 byte[] -- any`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const key = ctx.pop()
@@ -360,8 +340,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: byte[] any --
 	'app_global_put': {
-		signature: sig`byte[] any --`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -370,8 +350,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 byte[] any --
 	'app_local_put': {
-		signature: sig`uint64 byte[] any --`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const value = ctx.pop()
@@ -381,8 +361,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: byte[] --
 	'app_global_del': {
-		signature: sig`byte[] --`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const key = ctx.pop()
@@ -390,8 +370,8 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 byte[] --
 	'app_local_del': {
-		signature: sig`uint64 byte[] --`,
 		next: (_target) => [next],
 		exec(ctx) {
 			const key = ctx.pop()
@@ -400,18 +380,17 @@ const isn = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: -- any
 	'load': {
-		signature: sig`-- any`,
 		next: (_target) => [next],
 		exec(key, ctx) {
 			// FIXME: We should SSA these
-			const sequence_point = ctx.sequence_point()
-			ctx.push({ op: 'scratch_load', key, control: sequence_point })
+			ctx.push({ op: 'scratch_load', key, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: any --
 	'store': {
-		signature: sig`any --`,
 		next: (_target) => [next],
 		exec(key, ctx) {
 			// FIXME: We should SSA these

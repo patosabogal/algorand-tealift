@@ -21,7 +21,7 @@
  * }
  * ```
  */
-module.exports = {
+export default {
   Sender: {
     index: 0,
     name: 'Sender',
@@ -426,4 +426,4 @@ module.exports = {
     in: 'v7',
     notes: 'Number of ClearState Program pages'
   }
-}
+} as const

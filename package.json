@@ -1,0 +1,19 @@
+{
+  "name": "tealift",
+  "version": "0.0.1",
+  "description": "A toolkit for analyzing TEAL programs",
+  "main": "tealift.ts",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ignacio Losiggio <iglosiggio@dc.uba.ar>",
+  "license": "MIT",
+  "devDependencies": {
+    "@tsconfig/node18-strictest": "^1.0.0",
+    "@types/node": "^18.11.18",
+    "typescript": "^4.9.4"
+  }
+}

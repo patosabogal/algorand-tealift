@@ -34,6 +34,14 @@ interface AbstractExecutionContext {
 	add_value(value: AbstractValue): AbstractValueID
 	resolve_label(label: string, case_name?: string): JumpDescription
 	call_to(proc_label: string): void
+	/**
+	 * ## **NOTE:** This is an extremely fragile API.
+	 *
+	 * It should only be used for consuming everything on the symbolic stack when returning from procedures
+	 *
+	 * Also, the current implementation is WRONG.
+	 */
+	readall(): DataDependencies
 	get last_sequence_point(): AbstractValueID
 }
 
@@ -154,9 +162,8 @@ const isn: Record<string, InstructionDescription> = {
 	// Signature: -- []byte
 	'byte': {
 		next: () => [next],
-		exec(...args) {
-			const ctx = args[args.length - 1]
-			const instruction_params = args.slice(0, -1)
+		exec(ctx, ...args) {
+			const instruction_params = args
 			// FIXME: Parse value
 			ctx.push({ op: 'const', type: bytearray, value: instruction_params.join(' ').replace(/"/g, '\\"') })
 			return ctx.resolve_label(next)
@@ -165,9 +172,8 @@ const isn: Record<string, InstructionDescription> = {
 	// Signature: -- []byte
 	'pushbytes': {
 		next: () => [next],
-		exec(...args) {
-			const ctx = args[args.length - 1]
-			const instruction_params = args.slice(0, -1)
+		exec(ctx, ...args) {
+			const instruction_params = args
 			// FIXME: Parse value
 			ctx.push({ op: 'const', type: bytearray, value: instruction_params.join(' ').replace(/"/g, '\\"') })
 			return ctx.resolve_label(next)
@@ -446,10 +452,9 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	'retsub': {
 		next: () => [],
-		exec() {
+		exec(ctx) {
 			// FIXME: We should assert that the stack depth has to be statically known here!
-			//const consumes = ctx.popall()
-			const consumes = {}
+			const consumes = ctx.readall()
 			return {
 				kind: 'exit',
 				label: 'retsub',
@@ -589,11 +594,6 @@ const process_file = (filename: string): [Program, LabelMapping] => {
 
 const format_instruction = (ins: ParsedInstruction) =>
 	`${ins.linenum.toString().padStart(4)} | ${ins.operation} ${ins.args.join(' ')}`
-const dump_program = (program: Program) =>
-	program.forEach(v => {
-		v.labels.forEach(label => console.log(`     | ${label}:`))
-		console.log(format_instruction(v))
-	})
 
 const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	type RegionInfo = {
@@ -608,7 +608,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		pushes: number
 	}
 
-	const constants = new Map<string, AbstractValueID>()
+	//const constants = new Map<string, AbstractValueID>()
 	const values = new Map<AbstractValueID, AbstractValue>()
 	// First instruction of the region => ID of first sequence point
 	const regions = new Map<RegionID, AbstractValueID>()
@@ -641,8 +641,10 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	// Maps region id of region => successors
 	const region_successors = new Map<RegionID, RegionID[]>()
 
-	const run_from = (instruction_idx: InstructionID, is_procedure=true) => {
-		const function_id = instruction_idx
+	const instruction_id_to_region_id = (instruction_id: InstructionID): RegionID => instruction_id
+
+	const run_from = (start_instruction_id: InstructionID, is_procedure=true) => {
+		const function_id = start_instruction_id
 		if (functions_info.has(function_id)) {
 			const result = functions_info.get(function_id)!
 			assert(result.status === 'done', 'Recursive functions are not supported')
@@ -655,8 +657,12 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		}
 		functions_info.set(function_id, result)
 
-		const exit_points: AbstractValueID[] = []
-		const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: instruction_idx }]
+		type ExitPoint = {
+			region_id: RegionID
+			exit_point: AbstractValueID
+		}
+		const exit_points: ExitPoint[] = []
+		const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: start_instruction_id }]
 		// FIXME: Report if two basic blocks push too-much
 		while (instruction_queue.length !== 0) {
 			const jump_destination = instruction_queue.pop()!
@@ -669,23 +675,23 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 			const ctx: AbstractExecutionContext = {
 				push(value) {
-					let value_key: string
-					if (value.op === 'const' || value.op === 'ext_const') {
-						value_key = value.op === 'const'
-							? `${value.op};${value.type};${value.value}`
-							: `${value.op};${value.type};${value.name}`
-						let constant_hash = constants.get(value_key)
-						if (constant_hash !== undefined) {
-							symbolic_stack.push(constant_hash)
-							return constant_hash
-						}
-					}
+					//let value_key: string
+					//if (value.op === 'const' || value.op === 'ext_const') {
+					//	value_key = value.op === 'const'
+					//		? `${value.op};${value.type};${value.value}`
+					//		: `${value.op};${value.type};${value.name}`
+					//	let constant_hash = constants.get(value_key)
+					//	if (constant_hash !== undefined) {
+					//		symbolic_stack.push(constant_hash)
+					//		return constant_hash
+					//	}
+					//}
 
 					const value_hash = this.add_value(value)
 					symbolic_stack.push(value_hash)
 
-					if (value.op === 'const' || value.op === 'ext_const')
-						constants.set(value_key!, value_hash)
+					//if (value.op === 'const' || value.op === 'ext_const')
+					//	constants.set(value_key!, value_hash)
 
 					return value_hash
 				},
@@ -727,6 +733,21 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 					for (const result_idx of range(pushes))
 						ctx.push({ op: 'call-result', consumes: { call: last_sequence_point }, result_idx })
 				},
+				/**
+				 * ## **NOTE:** This is an extremely fragile API.
+				 *
+				 * It should only be used for consuming everything on the symbolic stack when returning from procedures
+				 *
+				 * Also, the current implementation is WRONG.
+				 */
+				readall(): DataDependencies {
+					const stack_clone = symbolic_stack.slice(0)
+					const consumes: DataDependencies = {}
+					for (const [value, idx] of enumerate(stack_clone.reverse())) {
+						consumes[idx] = value
+					}
+					return consumes
+				},
 				get last_sequence_point() {
 					return last_sequence_point
 				}
@@ -753,7 +774,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 				switch (successors.kind) {
 				case 'exit':
 					last_sequence_point = ctx.add_value({ op: 'exit', control: last_sequence_point, label: successors.label, consumes: successors.consumes })
-					exit_points.push(last_sequence_point)
+					exit_points.push({ region_id, exit_point: last_sequence_point })
 					region_successors.set(region_id, [])
 					break region_loop
 				case 'switch':
@@ -789,13 +810,52 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		result.status = 'done'
 		// FIXME: We should check that all mergepoints have the same stack depth
 		/* Calculate number of arguments and results */
-		if (is_procedure) {
-			const visited_points = new Set<RegionID>()
-			// FIXME: Consider all retsubs
-			const return_points = exit_points.map(v => values.get(v))
-			                                 .filter(v => v.kind === 'retsub')
-			assert(return_points.length !== 0, "Procedures should have at least one return point")
-			let current_region = return_points[0]
+		const return_points = exit_points.filter(v => values.get(v.exit_point)?.label === 'retsub')
+		const procedure_first_instruction = program[start_instruction_id]!
+		const procedure_name = procedure_first_instruction.labels[0] || `procedure at ${procedure_first_instruction.filename}:${procedure_first_instruction.linenum}`
+
+		if (return_points.length === 0 && is_procedure) {
+			console.warn(`No return points found for procedure ${procedure_name}`)
+		} else if (return_points.length !== 0 && is_procedure) {
+
+			const visited_regions = new Set<RegionID>()
+			const exit_regions = new Set<RegionID>(exit_points.map(v => v.region_id))
+
+			type StackEffect = {
+				pops: number
+				pushes: number
+			}
+
+			const search_retsub_path = (region_id: RegionID, current_path_effect: StackEffect): [boolean, StackEffect] => {
+				const region_info = regions_info.get(region_id)!
+				const pushes = current_path_effect.pushes - region_info.pops + region_info.pushes.length
+				const pops = current_path_effect.pops - Math.min(0, current_path_effect.pushes - region_info.pops)
+				const path_effect: StackEffect = { pops, pushes }
+
+				if (exit_regions.has(region_id)) {
+					return [true, path_effect]
+				}
+
+				if (!visited_regions.has(region_id)) {
+					visited_regions.add(region_id)
+
+					for (const region_successor_id of get_list(region_successors, region_id)) {
+						// FIXME: Consider all retsubs instead of just the first path found
+						const [found, effect] = search_retsub_path(region_successor_id, path_effect)
+						if (found === true)
+							return [found, effect]
+					}
+				}
+
+				return [false, path_effect]
+			}
+
+			const [found, effect] = search_retsub_path(instruction_id_to_region_id(start_instruction_id), { pops: 0, pushes: 0 })
+
+			assert(found === true, `Internal Error: Could not find a path to the retsubs for ${procedure_name}`)
+			result.pops = effect.pops
+			result.pushes = effect.pushes + effect.pops
+
 		}
 		return result
 	}
@@ -925,7 +985,7 @@ const do_ssa = (filename: string) => {
 		exit: (value_hash, value) => `"node${value_hash}" [label="${value.label}", color=red]\n`,
 		sequence_point: (value_hash, value) => `"node${value_hash}" [label="${value.label || ''}", color=red]\n`,
 	}
-	const default_printer: AbstractOPRenderer = (value_hash, value) => `"node${value_hash}" [label=${value.op}, color=blue]`
+	const default_printer: AbstractOPRenderer = (value_hash, value) => `"node${value_hash}" [label="${value.op}", color=blue]`
 	console.log('//', filename)
 	console.log('digraph {')
 	console.log('rankdir=LR')
@@ -950,7 +1010,7 @@ const do_ssa = (filename: string) => {
 
 //do_ssa('randgallery/offer-algos-for-asset.teal')
 //do_ssa('randgallery/offer-asset-for-algos.teal')
-do_ssa('randgallery/buy-asset-for-algos.teal')
+//do_ssa('randgallery/buy-asset-for-algos.teal')
 
 //do_ssa('tests/polynomial.teal')
 //do_ssa('tests/loop.teal')
@@ -958,9 +1018,10 @@ do_ssa('randgallery/buy-asset-for-algos.teal')
 //do_ssa('tests/cover.teal')
 //do_ssa('tests/uncover.teal')
 //do_ssa('tests/getbyte_setbyte.teal')
+//do_ssa('tests/procedure_swap.teal')
 
 //do_ssa('stateful-teal-auction-demo/sovauc_clear.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_escrow_tmpl.teal')
 //do_ssa('stateful-teal-auction-demo/sovauc_approve.teal')
 
-//do_ssa('cube/cube.teal')
+do_ssa('cube/cube.teal')

@@ -1,0 +1,9 @@
+int 1
+int 2
+callsub do_swap
++
+return
+
+do_swap:
+swap
+retsub

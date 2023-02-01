@@ -21,7 +21,7 @@
  * }
  * ```
  */
-module.exports = {
+export default {
   ApplicationArgs: {
     index: 26,
     name: 'ApplicationArgs',
@@ -71,4 +71,4 @@ module.exports = {
     in: 'v7',
     notes: 'ClearState Program as an array of pages'
   }
-}
+} as const

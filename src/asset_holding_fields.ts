@@ -21,7 +21,7 @@
  * }
  * ```
  */
-module.exports = {
+export default {
   AssetBalance: {
     index: 0,
     name: 'AssetBalance',
@@ -34,4 +34,4 @@ module.exports = {
     type: 'uint64',
     in: 'Is the asset frozen or not'
   }
-}
+} as const

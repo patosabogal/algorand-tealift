@@ -1,9 +1,13 @@
 int 1
-int 2
+int 0
 callsub do_swap
 +
 return
 
 do_swap:
+store 0
+store 1
+load 1
+load 0
 swap
 retsub

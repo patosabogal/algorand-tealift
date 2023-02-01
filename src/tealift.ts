@@ -563,6 +563,15 @@ function* enumerate<T>(iterable: Iterable<T>): Iterable<[T, number]> {
 		yield [v, i++]
 }
 
+function* zip<A, B>(xs: Iterable<A>, ys: Iterable<B>): Iterable<[A, B]> {
+	const it = ys[Symbol.iterator]()
+	for (const x of xs) {
+		const { done, value: y } = it.next()
+		if (done) return
+		yield [x, y]
+	}
+}
+
 function range(to: number): Iterable<number>
 function range(from: number, to: number): Iterable<number>
 function range(from: number, to: number, step: number): Iterable<number>
@@ -599,7 +608,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	type RegionInfo = {
 		pops: number
 		pushes: AbstractValueID[]
-		exit_stack: AbstractValueID[]
+		phis: AbstractValueID[]
 	}
 	type FunctionID = number
 	type FunctionInfo = {
@@ -608,7 +617,6 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		pushes: number
 	}
 
-	//const constants = new Map<string, AbstractValueID>()
 	const values = new Map<AbstractValueID, AbstractValue>()
 	// First instruction of the region => ID of first sequence point
 	const regions = new Map<RegionID, AbstractValueID>()
@@ -641,8 +649,6 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	// Maps region id of region => successors
 	const region_successors = new Map<RegionID, RegionID[]>()
 
-	const instruction_id_to_region_id = (instruction_id: InstructionID): RegionID => instruction_id
-
 	const run_from = (start_instruction_id: InstructionID, is_procedure=true) => {
 		const function_id = start_instruction_id
 		if (functions_info.has(function_id)) {
@@ -660,14 +666,17 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		type ExitPoint = {
 			region_id: RegionID
 			exit_point: AbstractValueID
+			popped_arguments: number
+			pushed_values: number
 		}
 		const exit_points: ExitPoint[] = []
-		const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: start_instruction_id }]
+		const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: start_instruction_id, stack_height: 0, popped_arguments: 0 }]
 		// FIXME: Report if two basic blocks push too-much
 		while (instruction_queue.length !== 0) {
 			const jump_destination = instruction_queue.pop()!
 			const region_id = jump_destination.to_instruction_idx
 			let instruction_idx = jump_destination.to_instruction_idx
+			let popped_arguments = jump_destination.popped_arguments
 
 			let symbolic_stack: AbstractValueID[] = []
 			let used_from_caller = 0
@@ -675,23 +684,8 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 			const ctx: AbstractExecutionContext = {
 				push(value) {
-					//let value_key: string
-					//if (value.op === 'const' || value.op === 'ext_const') {
-					//	value_key = value.op === 'const'
-					//		? `${value.op};${value.type};${value.value}`
-					//		: `${value.op};${value.type};${value.name}`
-					//	let constant_hash = constants.get(value_key)
-					//	if (constant_hash !== undefined) {
-					//		symbolic_stack.push(constant_hash)
-					//		return constant_hash
-					//	}
-					//}
-
 					const value_hash = this.add_value(value)
 					symbolic_stack.push(value_hash)
-
-					//if (value.op === 'const' || value.op === 'ext_const')
-					//	constants.set(value_key!, value_hash)
 
 					return value_hash
 				},
@@ -700,12 +694,14 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 					return value_hash
 				},
 				pop() {
-					if (symbolic_stack.length > 0)
+					if (symbolic_stack.length > 0) {
+						// Return value from the stack
 						return symbolic_stack.pop()!
-
-					const phi_hash = program.length * -++used_from_caller + region_id
-					values.set(phi_hash, { op: 'phi', consumes: {}, control: region_value_hash })
-					return phi_hash
+					} else if (is_procedure) {
+						// Subprocedure argument
+						return this.add_value({ op: 'arg', idx: popped_arguments++ })
+					}
+					throw new Error('Stack underflow detected outside subprocedure\n' + format_instruction(program[instruction_idx]!))
 				},
 				sequence_point(label, consumes) {
 					last_sequence_point = this.add_value({ op: 'sequence_point', consumes, control: last_sequence_point, label })
@@ -726,9 +722,9 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 					const consumes: DataDependencies = {}
 					for (const i of range(pops))
-						consumes[i] = ctx.pop()
+						consumes[`Arg(${i})`] = ctx.pop()
 
-					last_sequence_point = this.add_value({ op: 'call', consumes, control: last_sequence_point, proc_label})
+					last_sequence_point = this.add_value({ op: 'call', consumes, control: last_sequence_point, proc_label })
 
 					for (const result_idx of range(pushes))
 						ctx.push({ op: 'call-result', consumes: { call: last_sequence_point }, result_idx })
@@ -737,8 +733,6 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 				 * ## **NOTE:** This is an extremely fragile API.
 				 *
 				 * It should only be used for consuming everything on the symbolic stack when returning from procedures
-				 *
-				 * Also, the current implementation is WRONG.
 				 */
 				readall(): DataDependencies {
 					const stack_clone = symbolic_stack.slice(0)
@@ -767,6 +761,11 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 			}
 			const region_value_hash = last_sequence_point
 
+			for (let i = 0; i < jump_destination.stack_height; i++) {
+				ctx.push({ op: 'phi', consumes: {}, control: region_value_hash })
+			}
+			const phis = symbolic_stack.slice()
+
 			region_loop: while (true) {
 				const instruction = program[instruction_idx]!
 				const successors = isn[instruction.operation]?.exec(ctx, ...instruction.args) || fail('Unknown operation: ' + instruction.operation)
@@ -774,7 +773,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 				switch (successors.kind) {
 				case 'exit':
 					last_sequence_point = ctx.add_value({ op: 'exit', control: last_sequence_point, label: successors.label, consumes: successors.consumes })
-					exit_points.push({ region_id, exit_point: last_sequence_point })
+					exit_points.push({ region_id, exit_point: last_sequence_point, popped_arguments, pushed_values: symbolic_stack.length })
 					region_successors.set(region_id, [])
 					break region_loop
 				case 'switch':
@@ -782,7 +781,12 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 					for (const alternative of successors.alternatives) {
 						const projection_hash = ctx.add_value({ op: 'on', control: last_sequence_point, label: alternative.label })
-						instruction_queue.push({ from_value_hash: projection_hash, to_instruction_idx: alternative.instruction_idx })
+						instruction_queue.push({
+							from_value_hash: projection_hash,
+							to_instruction_idx: alternative.instruction_idx,
+							stack_height: symbolic_stack.length,
+							popped_arguments
+						})
 					}
 					region_successors.set(region_id, successors.alternatives.map(v => v.instruction_idx))
 					break region_loop
@@ -790,7 +794,12 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 					instruction_idx = successors.instruction_idx
 
 					if (predecessors_of(instruction_idx).length > 1) {
-						instruction_queue.push({ from_value_hash: last_sequence_point, to_instruction_idx: instruction_idx })
+						instruction_queue.push({
+							from_value_hash: last_sequence_point,
+							to_instruction_idx: instruction_idx,
+							stack_height: symbolic_stack.length,
+							popped_arguments
+						})
 						region_successors.set(region_id, [instruction_idx])
 						break region_loop
 					}
@@ -803,7 +812,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 			regions_info.set(region_id, {
 				pops: used_from_caller,
 				pushes: symbolic_stack,
-				exit_stack: [...symbolic_stack]
+				phis
 			})
 		}
 
@@ -813,49 +822,14 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		const return_points = exit_points.filter(v => values.get(v.exit_point)?.label === 'retsub')
 		const procedure_first_instruction = program[start_instruction_id]!
 		const procedure_name = procedure_first_instruction.labels[0] || `procedure at ${procedure_first_instruction.filename}:${procedure_first_instruction.linenum}`
+		result.pops = Math.max(...exit_points.map(v => v.popped_arguments))
 
-		if (return_points.length === 0 && is_procedure) {
+		const pushes = return_points.map(v => v.pushed_values)
+		if (pushes.length > 0) {
+			assert(pushes.every(v => v === pushes[0]), `${procedure_name} does not always return the same number of values`)
+			result.pushes = pushes[0]!
+		} else if (is_procedure) {
 			console.warn(`No return points found for procedure ${procedure_name}`)
-		} else if (return_points.length !== 0 && is_procedure) {
-
-			const visited_regions = new Set<RegionID>()
-			const exit_regions = new Set<RegionID>(exit_points.map(v => v.region_id))
-
-			type StackEffect = {
-				pops: number
-				pushes: number
-			}
-
-			const search_retsub_path = (region_id: RegionID, current_path_effect: StackEffect): [boolean, StackEffect] => {
-				const region_info = regions_info.get(region_id)!
-				const pushes = current_path_effect.pushes - region_info.pops + region_info.pushes.length
-				const pops = current_path_effect.pops - Math.min(0, current_path_effect.pushes - region_info.pops)
-				const path_effect: StackEffect = { pops, pushes }
-
-				if (exit_regions.has(region_id)) {
-					return [true, path_effect]
-				}
-
-				if (!visited_regions.has(region_id)) {
-					visited_regions.add(region_id)
-
-					for (const region_successor_id of get_list(region_successors, region_id)) {
-						// FIXME: Consider all retsubs instead of just the first path found
-						const [found, effect] = search_retsub_path(region_successor_id, path_effect)
-						if (found === true)
-							return [found, effect]
-					}
-				}
-
-				return [false, path_effect]
-			}
-
-			const [found, effect] = search_retsub_path(instruction_id_to_region_id(start_instruction_id), { pops: 0, pushes: 0 })
-
-			assert(found === true, `Internal Error: Could not find a path to the retsubs for ${procedure_name}`)
-			result.pops = effect.pops
-			result.pushes = effect.pushes + effect.pops
-
 		}
 		return result
 	}
@@ -863,55 +837,29 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	run_from(0, false)
 
 	for(const [region_id, region_info] of regions_info) {
-		const symbolic_stack = region_info.exit_stack
+		const symbolic_stack = region_info.pushes
 		for (const successor_idx of region_successors.get(region_id)!) {
-			for (const [value_hash, idx] of enumerate(symbolic_stack.slice().reverse())) {
-				const phi_hash = program.length * -(idx + 1) + successor_idx
+			const phis_hashes = regions_info.get(successor_idx)!.phis
+			if (phis_hashes.length === 0) {
+				// Nothing to do here
+				continue
+			}
+			const value_hashes = symbolic_stack.slice(-phis_hashes.length)
+			if (phis_hashes.length !== value_hashes.length) {
+				console.error(symbolic_stack)
+				console.error(phis_hashes)
+			}
+			assert(phis_hashes.length === value_hashes.length, "Not enough values on symbolic stack")
+
+			for (const [phi_hash, value_hash] of zip(phis_hashes, value_hashes)) {
 				const phi_value = values.get(phi_hash)
-				if (phi_value !== undefined)
-					phi_value.consumes[region_id] = value_hash
+				assert(phi_value !== undefined, "ICE: Invalid value hash on phi list")
+				phi_value.consumes[region_id] = value_hash
 			}
 		}
 	}
 
-	{
-		const region_predecessors = new Map<RegionID, RegionID[]>()
-		for (const [basic_block_idx, successor_idx_list] of region_successors)
-			for (const successor_idx of successor_idx_list)
-				get_list(region_predecessors, successor_idx).push(basic_block_idx)
-
-		let last_loop_did_change_something = true
-		while (last_loop_did_change_something) {
-			last_loop_did_change_something = false
-			for (const [region_id, region_info] of regions_info) {
-				const predecessor_idxs = get_list(region_predecessors, region_id)
-				for (const predecessor_id of predecessor_idxs) {
-					const predecessor_region_info = regions_info.get(predecessor_id)!
-					const values_to_be_kept = predecessor_region_info.exit_stack.slice(-region_info.pops).reverse()
-					for (const [value_hash, idx] of enumerate(values_to_be_kept)) {
-						const phi_hash = program.length * -(idx + 1) + region_id
-						let phi_value = values.get(phi_hash)
-						if (phi_value === undefined) {
-							phi_value = { op: 'phi', consumes: {}, control: program.length + region_id + 1 /* Hash for the first value of the region */ }
-							values.set(phi_hash, phi_value)
-						}
-
-						const index = region_info.exit_stack.length - region_info.pushes.length - (idx + 1)
-						if (index < 0) {
-							region_info.exit_stack.splice(0, 0, phi_hash)
-							last_loop_did_change_something = true
-						}
-
-						if (phi_value.consumes[predecessor_id] === undefined) {
-							phi_value.consumes[predecessor_id] = value_hash
-							last_loop_did_change_something = true
-						}
-					}
-				}
-			}
-		}
-	}
-
+	// FIXME: Assert mergepoint stack height invariant here
 	return values
 
 	function resolve_label_idx(label: string, instruction_idx: InstructionID) {
@@ -966,6 +914,8 @@ const do_ssa = (filename: string) => {
 		local_load: (value_hash) => `"node${value_hash}" [label="Load Local", shape=diamond]\n`,
 		scratch_load: (value_hash, value) => `"node${value_hash}" [label="Load Scratch(${value.key})", shape=diamond]\n`,
 		hash: (value_hash, value) => `node${value_hash} [label="Hash ${value.algo}"]\n`,
+		call: (value_hash, value) => `node${value_hash} [label="Call(${value.proc_label})"]\n`,
+		'call-result': (value_hash, value) => `node${value_hash} [label="Result(${value.result_idx})"]\n`,
 		phi: (value_hash) => `"node${value_hash}" [label="ϕ", shape=circle]\n`,
 		// CFG Operations
 		start: (value_hash) => `"node${value_hash}" [label="Start", color=red]\n`,
@@ -982,6 +932,7 @@ const do_ssa = (filename: string) => {
 		},
 		switch: (value_hash) => `"node${value_hash}" [label="Switch", color=red]\n`,
 		on: () => '',
+		arg: (value_hash, value) => `"node${value_hash}" [label="Arg(${value.idx})"]\n`,
 		exit: (value_hash, value) => `"node${value_hash}" [label="${value.label}", color=red]\n`,
 		sequence_point: (value_hash, value) => `"node${value_hash}" [label="${value.label || ''}", color=red]\n`,
 	}
@@ -1008,20 +959,10 @@ const do_ssa = (filename: string) => {
 	console.log('}')
 }
 
-//do_ssa('randgallery/offer-algos-for-asset.teal')
-//do_ssa('randgallery/offer-asset-for-algos.teal')
-//do_ssa('randgallery/buy-asset-for-algos.teal')
+const file = process.argv[2]
+if (file === undefined) {
+	console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>')
+	process.exit(1)
+}
 
-//do_ssa('tests/polynomial.teal')
-//do_ssa('tests/loop.teal')
-//do_ssa('tests/dig.teal')
-//do_ssa('tests/cover.teal')
-//do_ssa('tests/uncover.teal')
-//do_ssa('tests/getbyte_setbyte.teal')
-//do_ssa('tests/procedure_swap.teal')
-
-//do_ssa('stateful-teal-auction-demo/sovauc_clear.teal')
-//do_ssa('stateful-teal-auction-demo/sovauc_escrow_tmpl.teal')
-//do_ssa('stateful-teal-auction-demo/sovauc_approve.teal')
-
-do_ssa('cube/cube.teal')
+do_ssa(file)

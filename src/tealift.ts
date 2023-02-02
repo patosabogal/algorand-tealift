@@ -20,6 +20,16 @@ type RegionID = number
 type InstructionID = number
 type DataDependencies = Record<string, AbstractValueID>
 type LabelMapping = Map<string, InstructionID>
+type ValueMap = Map<AbstractValueID, AbstractValue>
+type RegionMap = Map<AbstractValueID, RegionInfo>
+
+type RegionInfo = {
+	name: string
+	pops: number
+	pushes: AbstractValueID[]
+	phis: AbstractValueID[]
+	values: AbstractValueID[]
+}
 
 interface InstructionDescription {
 	next(...args: any): Label[]
@@ -604,13 +614,7 @@ const process_file = (filename: string): [Program, LabelMapping] => {
 const format_instruction = (ins: ParsedInstruction) =>
 	`${ins.linenum.toString().padStart(4)} | ${ins.operation} ${ins.args.join(' ')}`
 
-const abstract_exec_program = (program: Program, labels: LabelMapping) => {
-	type RegionInfo = {
-		name: string
-		pops: number
-		pushes: AbstractValueID[]
-		phis: AbstractValueID[]
-	}
+const abstract_exec_program = (program: Program, labels: LabelMapping): [ValueMap, RegionMap] => {
 	type FunctionID = number
 	type FunctionInfo = {
 		status: 'in-progress' | 'done',
@@ -623,7 +627,6 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	const regions = new Map<RegionID, AbstractValueID>()
 	const regions_info = new Map<RegionID, RegionInfo>()
 	const functions_info = new Map<FunctionID, FunctionInfo>()
-	values.set(0, { op: 'start' })
 
 	const successors_of = (idx: InstructionID) => {
 		const instruction = program[idx]!
@@ -671,8 +674,13 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 			pushed_values: number
 		}
 		const exit_points: ExitPoint[] = []
-		const instruction_queue = [{ from_value_hash: 0, to_instruction_idx: start_instruction_id, stack_height: 0, popped_arguments: 0 }]
-		// FIXME: Report if two basic blocks push too-much
+		const instruction_queue = [{
+			from_value_hash: undefined as undefined | number,
+			to_instruction_idx: start_instruction_id,
+			stack_height: 0,
+			popped_arguments: 0
+		}]
+
 		while (instruction_queue.length !== 0) {
 			const jump_destination = instruction_queue.pop()!
 			const region_id = jump_destination.to_instruction_idx
@@ -680,7 +688,8 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 			let instruction_idx = jump_destination.to_instruction_idx
 			let popped_arguments = jump_destination.popped_arguments
 
-			let symbolic_stack: AbstractValueID[] = []
+			const symbolic_stack: AbstractValueID[] = []
+			const region_values: AbstractValueID[] = []
 			let used_from_caller = 0
 			let value_id = 1
 
@@ -712,6 +721,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 				add_value(value) {
 					const value_hash = program.length * value_id++ + (region_id + 1)
 					values.set(value_hash, value)
+					region_values.push(value_hash)
 					return value_hash
 				},
 				resolve_label(label, case_name='') {
@@ -756,8 +766,12 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 					values.get(region).incoming.add(jump_destination.from_value_hash)
 					continue
 				}
+				const incoming = new Set<RegionID>
+				if (jump_destination.from_value_hash !== undefined) {
+					incoming.add(jump_destination.from_value_hash)
+				}
 
-				last_sequence_point = ctx.add_value({ op: 'region', incoming: new Set([jump_destination.from_value_hash]), label: region_name })
+				last_sequence_point = ctx.add_value({ op: 'region', incoming, label: region_name })
 				regions.set(region_id, last_sequence_point)
 			}
 			const region_value_hash = last_sequence_point
@@ -814,7 +828,8 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 				name: region_name,
 				pops: used_from_caller,
 				pushes: symbolic_stack,
-				phis
+				phis,
+				values: region_values
 			})
 		}
 
@@ -862,7 +877,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 	/* Assert mergepoint stack height invariant */ {
 		const region_predecessors = new Map<RegionID, RegionID[]>()
-		for (const [predecessor, successors] of region_successors.entries()) {
+		for (const [predecessor, successors] of region_successors) {
 			for (const successor of successors) {
 				get_list(region_predecessors, successor).push(predecessor)
 			}
@@ -870,7 +885,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 		let everything_ok = true
 
-		for (const [successor, predecessors] of region_predecessors.entries()) {
+		for (const [successor, predecessors] of region_predecessors) {
 			const stack_heights = predecessors.map(v => regions_info.get(v)!.pushes.length)
 			const is_ok = stack_heights.every(v => v === stack_heights[0])
 			everything_ok &&= is_ok
@@ -886,7 +901,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 		assert(everything_ok, "Mergepoints from multiple basic blocks should always have the same stack height")
 	}
-	return values
+	return [values, regions_info]
 
 	function resolve_label_idx(label: string, instruction_idx: InstructionID) {
 		const label_idx = label === next
@@ -908,9 +923,15 @@ const warn_and_default = (instruction: ParsedInstruction) => {
 	return [next]
 }
 
-const do_ssa = (filename: string) => {
+type DrawSSAOptions = {
+	blocks?: boolean
+	phi_labels?: boolean
+	direction?: 'TD' | 'LR'
+}
+
+const do_ssa = (filename: string, options: DrawSSAOptions) => {
 	const [program, labels] = process_file(filename)
-	const values = abstract_exec_program(program, labels)
+	const [values, regions] = abstract_exec_program(program, labels)
 
 	type AbstractOPRenderer = (value_hash: AbstractValueID, value: AbstractValue) => string
 	const binop = (label: string): AbstractOPRenderer => (value_hash) => `node${value_hash} [label="${label}", shape=circle]\n`
@@ -947,13 +968,6 @@ const do_ssa = (filename: string) => {
 		start: (value_hash) => `"node${value_hash}" [label="Start", color=red]\n`,
 		region: (value_hash, value) => {
 			let result = `"node${value_hash}" [label="Region(${value.label})", color=red]\n`
-			for (const incoming_edge of value.incoming) {
-				const cfg_value = values.get(incoming_edge)
-				if (cfg_value.op === 'on')
-					result += `"node${cfg_value.control}" -> "node${value_hash}" [label="${cfg_value.label}", style=dashed]\n`
-				else
-					result += `"node${incoming_edge}" -> "node${value_hash}" [style=dashed]\n`
-			}
 			return result
 		},
 		switch: (value_hash) => `"node${value_hash}" [label="Switch", color=red]\n`,
@@ -965,30 +979,66 @@ const do_ssa = (filename: string) => {
 	const default_printer: AbstractOPRenderer = (value_hash, value) => `"node${value_hash}" [label="${value.op}", color=blue]`
 	console.log('//', filename)
 	console.log('digraph {')
-	console.log('rankdir=LR')
-	for (const [value_hash, value_repr] of values) {
-		const ssa_op = ssa_operations[value_repr.op] || default_printer
-		if (ssa_op === default_printer) console.error(`Unknown abstract operation ${value_repr.op}, using default printer`)
-		console.log(ssa_op(value_hash, value_repr))
-		if (value_repr.op !== 'phi' && value_repr.consumes !== undefined)
-			for (const [key, consumed_value] of Object.entries(value_repr.consumes))
-				console.log(`"node${consumed_value}" -> "node${value_hash}" [label="${key}"]`)
-		if (value_repr.op === 'phi')
-			for (const [region_id_key, mapping_value_hash] of Object.entries(value_repr.consumes)) {
-				const region_id = parseInt(region_id_key)
-				const region = values.get(program.length + region_id + 1)
-				console.log(`"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`)
-			}
-		if (value_repr.op !== 'on' && value_repr.control)
-			console.log(`"node${value_repr.control}" -> "node${value_hash}" [style=dashed]\n`)
+	console.log(`rankdir=${options.direction || 'TD'}`)
+	for (const region of regions.values()) {
+		if (options.blocks === true) {
+			console.log(`subgraph "cluster${region.name}" {\n`)
+			console.log(`label="${region.name}"\n`)
+		}
+		for (const value_hash of region.values) {
+			render_node(value_hash, values.get(value_hash)!)
+		}
+		if (options.blocks === true) {
+			console.log('}')
+		}
+	}
+	for (const [value_hash, value] of values) {
+		render_edges(value_hash, value)
 	}
 	console.log('}')
+
+	function render_node(value_hash: AbstractValueID, value: AbstractValue) {
+		const ssa_op = ssa_operations[value.op] || default_printer
+		if (ssa_op === default_printer)
+			console.error(`Unknown abstract operation ${value.op}, using default printer`)
+		console.log(ssa_op(value_hash, value))
+	}
+	function render_edges(value_hash: AbstractValueID, value: AbstractValue) {
+		if (value.op !== 'phi' && value.consumes !== undefined)
+			for (const [key, consumed_value] of Object.entries(value.consumes))
+				console.log(`"node${consumed_value}" -> "node${value_hash}" [label="${key}"]`)
+		if (value.op === 'phi')
+			for (const [region_id_key, mapping_value_hash] of Object.entries(value.consumes)) {
+				const region_id = parseInt(region_id_key)
+				const region = values.get(program.length + region_id + 1)
+				if (options.phi_labels === true) {
+					console.log(`"node${mapping_value_hash}" -> "node${value_hash}" [label="from ${region.label}"]\n`)
+				} else {
+					console.log(`"node${mapping_value_hash}" -> "node${value_hash}"\n`)
+				}
+			}
+		if (value.op === 'region') {
+			for (const incoming_edge of value.incoming) {
+				const cfg_value = values.get(incoming_edge)
+				if (cfg_value.op === 'on')
+					console.log(`"node${cfg_value.control}" -> "node${value_hash}" [label="${cfg_value.label}", style=dashed]\n`)
+				else
+					console.log(`"node${incoming_edge}" -> "node${value_hash}" [style=dashed]\n`)
+			}
+		}
+		if (value.op !== 'on' && value.control)
+			console.log(`"node${value.control}" -> "node${value_hash}" [style=dashed]\n`)
+	}
 }
 
 const file = process.argv[2]
 if (file === undefined) {
-	console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>')
+	console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>', '[--no-blocks]', '[--no-phi-labels]', '[--dir=TD|LR]')
 	process.exit(1)
 }
 
-do_ssa(file)
+const blocks = process.argv.slice(3).every(v => v !== '--no-blocks')
+const phi_labels = process.argv.slice(3).every(v => v !== '--no-phi-labels')
+const direction = (process.argv.slice(3).find(v => v === '--dir=TD' || v === '--dir=LR')?.slice('--dir='.length) || 'TD') as 'TD' | 'LR'
+
+do_ssa(file, { blocks, phi_labels, direction })

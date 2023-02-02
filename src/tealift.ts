@@ -819,7 +819,6 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		}
 
 		result.status = 'done'
-		// FIXME: We should check that all mergepoints have the same stack depth
 		/* Calculate number of arguments and results */
 		const return_points = exit_points.filter(v => values.get(v.exit_point)?.label === 'retsub')
 		const procedure_first_instruction = program[start_instruction_id]!

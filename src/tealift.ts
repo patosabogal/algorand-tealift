@@ -606,6 +606,7 @@ const format_instruction = (ins: ParsedInstruction) =>
 
 const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 	type RegionInfo = {
+		name: string
 		pops: number
 		pushes: AbstractValueID[]
 		phis: AbstractValueID[]
@@ -675,6 +676,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		while (instruction_queue.length !== 0) {
 			const jump_destination = instruction_queue.pop()!
 			const region_id = jump_destination.to_instruction_idx
+			const region_name = program[region_id]!.labels[0] || format_location(program[region_id]!)
 			let instruction_idx = jump_destination.to_instruction_idx
 			let popped_arguments = jump_destination.popped_arguments
 
@@ -755,8 +757,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 					continue
 				}
 
-				const label = program[instruction_idx]?.labels[0] || region_id.toString()
-				last_sequence_point = ctx.add_value({ op: 'region', incoming: new Set([jump_destination.from_value_hash]), label })
+				last_sequence_point = ctx.add_value({ op: 'region', incoming: new Set([jump_destination.from_value_hash]), label: region_name })
 				regions.set(region_id, last_sequence_point)
 			}
 			const region_value_hash = last_sequence_point
@@ -810,6 +811,7 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 			}
 
 			regions_info.set(region_id, {
+				name: region_name,
 				pops: used_from_caller,
 				pushes: symbolic_stack,
 				phis
@@ -826,10 +828,10 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 
 		const pushes = return_points.map(v => v.pushed_values)
 		if (pushes.length > 0) {
-			assert(pushes.every(v => v === pushes[0]), `${procedure_name} does not always return the same number of values`)
+			assert(pushes.every(v => v === pushes[0]), `Procedure "${procedure_name}" does not always return the same number of values`)
 			result.pushes = pushes[0]!
 		} else if (is_procedure) {
-			console.warn(`No return points found for procedure ${procedure_name}`)
+			console.warn(`No return points found for procedure "${procedure_name}"`)
 		}
 		return result
 	}
@@ -859,7 +861,32 @@ const abstract_exec_program = (program: Program, labels: LabelMapping) => {
 		}
 	}
 
-	// FIXME: Assert mergepoint stack height invariant here
+	/* Assert mergepoint stack height invariant */ {
+		const region_predecessors = new Map<RegionID, RegionID[]>()
+		for (const [predecessor, successors] of region_successors.entries()) {
+			for (const successor of successors) {
+				get_list(region_predecessors, successor).push(predecessor)
+			}
+		}
+
+		let everything_ok = true
+
+		for (const [successor, predecessors] of region_predecessors.entries()) {
+			const stack_heights = predecessors.map(v => regions_info.get(v)!.pushes.length)
+			const is_ok = stack_heights.every(v => v === stack_heights[0])
+			everything_ok &&= is_ok
+			if (!is_ok) {
+				const region_name = regions_info.get(successor)!.name
+				console.error(`Region "${region_name}" can be reached with multiple different stack heights:`)
+				for (const predecessor of predecessors) {
+					const predecessor_info = regions_info.get(predecessor)!
+					console.error(` - From region "${predecessor_info.name}" stack has height ${predecessor_info.pushes.length}`)
+				}
+			}
+		}
+
+		assert(everything_ok, "Mergepoints from multiple basic blocks should always have the same stack height")
+	}
 	return values
 
 	function resolve_label_idx(label: string, instruction_idx: InstructionID) {

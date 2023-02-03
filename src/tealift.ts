@@ -207,6 +207,17 @@ const isn: Record<string, InstructionDescription> = {
 			}
 		},
 	},
+	'bz': {
+		next: (label) => [label, next],
+		exec(ctx, label) {
+			const condition = ctx.pop()
+			return {
+				kind: 'switch',
+				consumes: { condition },
+				alternatives: [ctx.resolve_label(next, 'non-zero'), ctx.resolve_label(label, 'zero')]
+			}
+		},
+	},
 	// Signature: any -- any any
 	'dup': {
 		next: () => [next],
@@ -300,6 +311,14 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: []byte --
+	'log': {
+		next: () => [next],
+		exec(ctx) {
+			ctx.sequence_point('log', { value: ctx.pop() })
+			return ctx.resolve_label(next)
+		}
+	},
 	// Signature: --
 	'err': {
 		next: () => [],
@@ -310,6 +329,14 @@ const isn: Record<string, InstructionDescription> = {
 				consumes: {}
 			}
 		},
+	},
+	// Signature: uint64 --
+	'assert': {
+		next: () => [next],
+		exec(ctx) {
+			ctx.sequence_point('assert', { value: ctx.pop() })
+			return ctx.resolve_label(next)
+		}
 	},
 	// Signature: -- any
 	'global': {
@@ -340,6 +367,15 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx, field: TxnaFieldName, idx) {
 			ctx.push({ op: 'ext_const', type: txna_fields[field].type || any, name: `txn.${field}[${idx}]` })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: uint64 -- any
+	'txnas': {
+		next: () => [next],
+		exec(ctx, field: TxnaFieldName) {
+			const index = ctx.pop()
+			ctx.push({ op: 'ext_const', consumes: { index }, type: txna_fields[field].type || any, name: `txn.${field}[?]` })
 			return ctx.resolve_label(next)
 		},
 	},

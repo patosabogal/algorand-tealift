@@ -28,6 +28,7 @@ export type RegionInfo = {
 	pushes: AbstractValueID[]
 	phis: AbstractValueID[]
 	values: AbstractValueID[]
+	successors: RegionID[]
 }
 
 interface InstructionDescription {
@@ -685,9 +686,6 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 		for (const successor_idx of successors_of(predecessor_idx))
 			predecessors_of(successor_idx).push(predecessor_idx)
 
-	// Maps region id of region => successors
-	const region_successors = new Map<RegionID, RegionID[]>()
-
 	const run_from = (start_instruction_id: InstructionID, is_procedure=true) => {
 		const function_id = start_instruction_id
 		if (functions_info.has(function_id)) {
@@ -725,6 +723,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 
 			const symbolic_stack: AbstractValueID[] = []
 			const region_values: AbstractValueID[] = []
+			const region_successors: RegionID[] = []
 			let used_from_caller = 0
 			let value_id = 1
 
@@ -824,7 +823,6 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 				case 'exit':
 					last_sequence_point = ctx.add_value({ op: 'exit', control: last_sequence_point, label: successors.label, consumes: successors.consumes })
 					exit_points.push({ region_id, exit_point: last_sequence_point, popped_arguments, pushed_values: symbolic_stack.length })
-					region_successors.set(region_id, [])
 					break region_loop
 				case 'switch':
 					last_sequence_point = ctx.add_value({ op: 'switch', control: last_sequence_point, consumes: successors.consumes })
@@ -838,7 +836,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 							popped_arguments
 						})
 					}
-					region_successors.set(region_id, successors.alternatives.map(v => v.instruction_idx))
+					region_successors.push(...successors.alternatives.map(v => v.instruction_idx))
 					break region_loop
 				case 'jump':
 					instruction_idx = successors.instruction_idx
@@ -850,7 +848,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 							stack_height: symbolic_stack.length,
 							popped_arguments
 						})
-						region_successors.set(region_id, [instruction_idx])
+						region_successors.push(instruction_idx)
 						break region_loop
 					}
 					break
@@ -864,7 +862,8 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 				pops: used_from_caller,
 				pushes: symbolic_stack,
 				phis,
-				values: region_values
+				values: region_values,
+				successors: region_successors
 			})
 		}
 
@@ -889,7 +888,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 
 	for(const [region_id, region_info] of regions_info) {
 		const symbolic_stack = region_info.pushes
-		for (const successor_idx of region_successors.get(region_id)!) {
+		for (const successor_idx of regions_info.get(region_id)!.successors) {
 			const phis_hashes = regions_info.get(successor_idx)!.phis
 			if (phis_hashes.length === 0) {
 				// Nothing to do here
@@ -912,7 +911,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 
 	/* Assert mergepoint stack height invariant */ {
 		const region_predecessors = new Map<RegionID, RegionID[]>()
-		for (const [predecessor, successors] of region_successors) {
+		for (const [predecessor, {successors}] of regions_info) {
 			for (const successor of successors) {
 				get_list(region_predecessors, successor).push(predecessor)
 			}

@@ -9,8 +9,15 @@ const print_ssa = (filename: string) => {
 	for (const region of regions.values()) {
 		for (const value_hash of region.values) {
 			const value = values.get(value_hash)!
-			if (value.op === 'on') {
-				get_list(switch_projections, value.control).push([value.label, region.name])
+			if (value.op !== 'region') {
+				continue
+			}
+			for (const incoming of value.incoming) {
+				const projection = values.get(incoming)!
+				if (projection.op !== 'on') {
+					continue
+				}
+				get_list(switch_projections, projection.control).push([projection.label, region.name])
 			}
 		}
 	}
@@ -96,6 +103,10 @@ const print_ssa = (filename: string) => {
 		console.log(`${region.name}:`)
 		for (const value_hash of region.values) {
 			print_node(value_hash, values.get(value_hash)!)
+		}
+		if (region.successors.length === 1) {
+			const successor = regions.get(region.successors[0]!)!
+			console.log(`jmp dst=<${successor.name}>`)
 		}
 	}
 }

@@ -1,0 +1,593 @@
+#pragma version 6
+
+// Deploy
+txn ApplicationID
+bz deploy
+
+// If any of these fields are not ZeroAddress, you're being hacked!
+txn CloseRemainderTo
+global ZeroAddress
+== 
+txn AssetCloseTo
+global ZeroAddress
+==
+&&
+txn RekeyTo
+global ZeroAddress
+== 
+&&
+assert
+
+// Fee should be reasonable, otherwise the contract's ALGO balance can get cleared
+txn Fee 
+int 10000 // 10000 microalgos
+<= 
+assert
+
+// Only NoOp
+txn OnCompletion
+int NoOp
+==
+assert
+
+// For pooling
+txna ApplicationArgs 0
+byte "poor"
+==
+bnz poor
+
+///// Playing /////
+// Move from storage to scratch
+byte "0"
+app_global_get
+store 0
+byte "1"
+app_global_get
+store 1
+byte "2"
+app_global_get
+store 2
+byte "3"
+app_global_get
+store 3
+
+// Get index for while loop
+txn NumAppArgs
+store 14
+
+play:
+    // Decrease index by 1 until 0, and store
+    load 14
+    dup
+    bz is_solved
+    int 1
+    -
+    dup
+    store 14
+
+    txnas ApplicationArgs
+    byte "R"
+    ==
+    bnz _R
+
+    load 14
+    txnas ApplicationArgs
+    byte "U"
+    ==
+    bnz _U
+
+    load 14
+    txnas ApplicationArgs
+    byte "F"
+    ==
+    bnz _F
+
+    load 14
+    txnas ApplicationArgs
+    byte "L"
+    ==
+    bnz _L
+
+    load 14
+    txnas ApplicationArgs
+    byte "D"
+    ==
+    bnz _D
+
+    load 14
+    txnas ApplicationArgs
+    byte "B"
+    ==
+    bnz _B
+
+    load 14
+    txnas ApplicationArgs
+    byte "R'"
+    ==
+    bnz _Rp
+
+    load 14
+    txnas ApplicationArgs
+    byte "U'"
+    ==
+    bnz _Up
+
+    load 14
+    txnas ApplicationArgs
+    byte "F'"
+    ==
+    bnz _Fp
+
+    load 14
+    txnas ApplicationArgs
+    byte "L'"
+    ==
+    bnz _Lp
+
+    load 14
+    txnas ApplicationArgs
+    byte "D'"
+    ==
+    bnz _Dp
+
+    load 14
+    txnas ApplicationArgs
+    byte "B'"
+    ==
+    bnz _Bp
+
+b fail
+
+///// code /////
+
+deploy:
+    // EP
+    byte "0"
+    pushbytes "jkbdelgiacfh"
+    app_global_put
+    // CP
+    byte "1"
+    pushbytes "edhgcfab"
+    app_global_put
+    // EO
+    byte "2"
+    pushbytes 0x020101020102020101010101 // 12 bytes
+    app_global_put
+    // CO
+    byte "3"
+    pushbytes 0x0202030303010103 // 8 bytes
+    app_global_put
+
+    int 1
+    return
+
+////////// Branches
+
+////// Move definition
+
+// CORNERS
+// UBL UBR UFR UFL DFL DFR DBR DBL = 0 1 2 3 4 5 6 7 8
+// 0 = oriented, 1 = turned clockwise, 2 = turned counter-clockwise
+// EDGES
+// UB UR UF UL BL BR FR FL DF DR DB DL = 0 1 2 3 4 5 6 7 8 9 10 11
+// 0 = oriented, 1 = unoriented
+
+//// Clockwise
+
+_R:
+    // CP
+    int 1
+    int 6
+    int 5
+    int 2
+    callsub permute_c
+    // EP
+    int 1
+    int 5
+    int 9
+    int 6
+    callsub permute_e
+    // CO
+    pushbytes 0x0001020000010200
+    callsub orient_c
+    b play
+
+_U:
+    // CP
+    int 0
+    int 1
+    int 2
+    int 3
+    callsub permute_c
+    // EP
+    int 0
+    int 1
+    int 2
+    int 3
+    callsub permute_e
+    b play
+
+_F:
+    // CP
+    int 3
+    int 2
+    int 5
+    int 4
+    callsub permute_c
+    // EP
+    int 2
+    int 6
+    int 8
+    int 7
+    callsub permute_e
+    // CO
+    pushbytes 0x0000010201020000
+    callsub orient_c
+    // EO
+    pushbytes 0x000001000000010101000000
+    callsub orient_e
+    b play
+
+_L:
+    // CP
+    int 0
+    int 3
+    int 4
+    int 7
+    callsub permute_c
+    // EP
+    int 3
+    int 7
+    int 11
+    int 4
+    callsub permute_e
+    // CO
+    pushbytes 0x0200000102000001
+    callsub orient_c
+    b play
+
+_D:
+    // CP
+    int 4
+    int 5
+    int 6
+    int 7
+    callsub permute_c
+    // EP
+    int 8
+    int 9
+    int 10
+    int 11
+    callsub permute_e
+    b play
+
+_B:
+    // CP
+    int 1
+    int 0
+    int 7
+    int 6
+    callsub permute_c
+    // EP
+    int 0
+    int 4
+    int 10
+    int 5
+    callsub permute_e
+    // CO
+    pushbytes 0x0102000000000102
+    callsub orient_c
+    // EO
+    pushbytes 0x010000000101000000000100
+    callsub orient_e
+    b play
+
+//// Counter-clockwise
+
+_Rp:
+    // CP
+    int 2
+    int 5
+    int 6
+    int 1
+    callsub permute_c
+    // EP
+    int 6
+    int 9
+    int 5
+    int 1
+    callsub permute_e
+    // CO
+    pushbytes 0x0001020000010200
+    callsub orient_c
+    b play
+
+_Up:
+    // CP
+    int 3
+    int 2
+    int 1
+    int 0
+    callsub permute_c
+    // EP
+    int 3
+    int 2
+    int 1
+    int 0
+    callsub permute_e
+    b play
+
+_Fp:
+    // CP
+    int 4
+    int 5
+    int 2
+    int 3
+    callsub permute_c
+    // EP
+    int 7
+    int 8
+    int 6
+    int 2
+    callsub permute_e
+    // CO
+    pushbytes 0x0000010201020000
+    callsub orient_c
+    // EO
+    pushbytes 0x000001000000010101000000
+    callsub orient_e
+    b play
+
+_Lp:
+    // CP
+    int 7
+    int 4
+    int 3
+    int 0
+    callsub permute_c
+    // EP
+    int 4
+    int 11
+    int 7
+    int 3
+    callsub permute_e
+    // CO
+    pushbytes 0x0200000102000001
+    callsub orient_c
+    b play
+
+_Dp:
+    // CP
+    int 7
+    int 6
+    int 5
+    int 4
+    callsub permute_c
+    // EP
+    int 11
+    int 10
+    int 9
+    int 8
+    callsub permute_e
+    b play
+
+_Bp:
+    // CP
+    int 6
+    int 7
+    int 0
+    int 1
+    callsub permute_c
+    // EP
+    int 5
+    int 10
+    int 4
+    int 0
+    callsub permute_e
+    // CO
+    pushbytes 0x0102000000000102
+    callsub orient_c
+    // EO
+    pushbytes 0x010000000101000000000100
+    callsub orient_e
+    b play
+
+//// Half-turns
+// procrastinate native half-turn support until it is really necessary
+
+////// Permutation and orientation branches
+
+permute_e:
+    // pops: ...stack, A, B, C, D
+    // cycles edges A->B->C->D (EP and EO)
+    // pushes: ...stack
+    dig 3
+    dig 3
+    dig 3
+    dig 3
+    load 0
+    callsub rotatebytes
+    store 0
+    load 2
+    callsub rotatebytes
+    store 2
+    retsub
+
+permute_c:
+    // pops: ...stack, A, B, C, D
+    // cycles corners A->B->C->D (CP and CO)
+    // pushes: ...stack
+    dig 3
+    dig 3
+    dig 3
+    dig 3
+    load 1
+    callsub rotatebytes
+    store 1
+    load 3
+    callsub rotatebytes
+    store 3
+    retsub
+
+orient_e:
+    // pops: ...stack, m
+    // applies orientation mask to EO byte array (mod2 at check)
+    // pushes: ...stack
+    load 2
+    b+
+    store 2
+    retsub
+
+orient_c:
+    // pops: ...stack, m
+    // applies orientation mask to CO byte array (mod3 at check)
+    // pushes: ...stack
+    btoi // to save opcode cost
+    load 3
+    btoi
+    +
+    itob
+    store 3
+    retsub
+
+////// Fundamentals
+
+swapbytes:
+    // pops: ...stack, X, Y, b
+    // b[X], b[Y] = b[Y], b[X]
+    // pushes: ...stack, b'
+    dup
+    dig 2
+    getbyte
+    swap
+    dup
+    dig 4
+    getbyte
+    uncover 3
+    swap
+    setbyte
+    cover 2
+    setbyte
+    retsub
+
+rotatebytes:
+    // pops: ...stack, A, B, C, D, b
+    // b[A], b[B], b[C], b[D] = b[D], b[A], b[B], b[C]
+    // pushes: ...stack, b'''
+
+    // Swap last two
+    dig 2       // A B C D b C
+    cover 2     // A B C C D b
+    callsub swapbytes // WXYZ -> WXZY (A B C b')
+    // Swap mid two
+    dig 2       // A B C b' B
+    cover 2     // A B B C b'
+    callsub swapbytes // WXZY -> WZXS (A B b'')
+    // Swap first two
+    callsub swapbytes // WZXY -> ZWXY (b''')
+    retsub
+
+////// Solved state checks
+
+is_solved:
+    // pops: ...stack
+    // Pushes a 1 if cube is solved
+    // pushes: ...stack, 0|1
+    // Check EP
+    pop // pop extra 0
+
+    load 0
+    pushbytes "abcdefghijkl"
+    ==
+    // Check CP
+    load 1
+    pushbytes "abcdefgh"
+    ==
+    &&
+    // Check EO (item-wise mod2)
+    load 2
+    pushbytes 0x010101010101010101010101
+    b&
+    pushbytes 0x000000000000000000000000
+    ==
+    &&
+    // Check CO (item-wise mod3)
+    load 3
+    callsub check_co
+    &&
+
+    byte "You won!"
+    log
+
+    return
+
+check_co:
+    // pops: ...stack, co
+    // Checks if co byte[] is solved (all bytes are 0 mod 3)
+    // pushes: ...stack, 1|0
+    // Copy thing to scratch space to save opcodes
+    dup
+    store 20
+    // Check that every byte mod 3 = 0
+    int 0
+    getbyte
+    int 3
+    %
+    load 20
+    int 1
+    getbyte
+    int 3
+    %
+    load 20
+    int 2
+    getbyte
+    int 3
+    %
+    load 20
+    int 3
+    getbyte
+    int 3
+    %
+    load 20
+    int 4
+    getbyte
+    int 3
+    %
+    load 20
+    int 5
+    getbyte
+    int 3
+    %
+    load 20
+    int 6
+    getbyte
+    int 3
+    %
+    load 20
+    int 7
+    getbyte
+    int 3
+    %
+    // We should have eight 8s on the stack, therefore seven ||s should yield a 0
+    ||
+    ||
+    ||
+    ||
+    ||
+    ||
+    ||
+    ! // If we got 0 it's all good, negate it so that we return 1
+    retsub
+
+// Other
+
+poor:
+    byte "Didn't win yet...!"
+    log
+
+    int 1
+    return
+
+fail:
+    int 666
+    return

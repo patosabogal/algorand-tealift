@@ -31,7 +31,10 @@ export type RegionInfo = {
 	successors: RegionID[]
 }
 
+type AVMVersion = 'v1' | 'v2' | 'v3' | 'v4' | 'v5' | 'v6' | 'v7' | 'v8'
+
 interface InstructionDescription {
+	availability?: AVMVersion
 	next(...args: any): Label[]
 	exec(ctx: AbstractExecutionContext, ...args: any): NextStepDescription
 }
@@ -63,7 +66,20 @@ type NextStepDescription = JumpDescription | ExitDescription | SwitchDescription
 
 type InstructionVariant = 'uint64' | '[]byte' | 'none'
 
-function binop(abstract_op: string, variant='none' as InstructionVariant): InstructionDescription {
+function binop(abstract_op: string, variant='none' as InstructionVariant, availability?: AVMVersion): InstructionDescription {
+	if (availability !== undefined) {
+		return {
+			availability,
+			next: () => [next],
+			exec(ctx) {
+				const rhs = ctx.pop()
+				const lhs = ctx.pop()
+				ctx.push({ op: abstract_op, consumes: { rhs, lhs }, variant })
+				return ctx.resolve_label(next)
+			},
+		}
+	}
+
 	return {
 		next: () => [next],
 		exec(ctx) {
@@ -75,23 +91,112 @@ function binop(abstract_op: string, variant='none' as InstructionVariant): Instr
 	}
 }
 
+function v1_binop(abstract_op: string, variant: InstructionVariant='none'): InstructionDescription {
+	return binop(abstract_op, variant, 'v1')
+}
+
+function v1_hash(algo: string): InstructionDescription {
+	return {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'hash', algo, consumes: { value } })
+			return ctx.resolve_label(next)
+		}
+	}
+}
+
 // FIXME: Better type here
 const isn: Record<string, InstructionDescription> = {
-	// Signature: any any -- uint64
-	'==': binop('eq'),
-	'!=': binop('ne'),
+	// Signature: --
+	'err': {
+		availability: 'v1',
+		next: () => [],
+		exec() {
+			return {
+				kind: 'exit',
+				label: 'err',
+				consumes: {}
+			}
+		},
+	},
+	// Signature: []byte -- []byte
+	'sha256': v1_hash('sha256'),
+	'keccak256': v1_hash('keccak256'),
+	'sha512_256': v1_hash('sha512_256'),
+	// Signature: []byte []byte []byte -- uint64
+	'ed25519verify': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			const pubkey = ctx.pop()
+			const signature = ctx.pop()
+			const data = ctx.pop()
+			// FIXME: Should we use the same op for all verify operations?
+			ctx.push({ op: 'ed25519verify', consumes: { pubkey, signature, data } })
+			return ctx.resolve_label(next)
+		}
+	},
 	// Signature: uint64 uint64 -- uint64
-	'&&': binop('and', uint64),
-	'||': binop('or', uint64),
-	'+': binop('add', uint64),
-	'-': binop('sub', uint64),
-	'*': binop('mul', uint64),
+	'+': v1_binop('add', uint64),
+	'-': v1_binop('sub', uint64),
+	'/': v1_binop('div', uint64),
+	'*': v1_binop('mul', uint64),
+	'<': v1_binop('lt', uint64),
+	'>': v1_binop('gt', uint64),
+	'>=': v1_binop('gt', uint64),
+	'<=': v1_binop('gt', uint64),
+	'&&': v1_binop('and', uint64),
+	'||': v1_binop('or', uint64),
+	// Signature: any any -- uint64
+	'==': v1_binop('eq'),
+	'!=': v1_binop('ne'),
+	// Signature: uint64 -- uint64
+	'!': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'not', consumes: { value } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: []byte -- uint64
+	'len': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			ctx.push({ op: 'len', consumes: { value: ctx.pop() } })
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: uint64 -- []byte
+	'itob': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'cast', type: bytearray, consumes: { value } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: []byte -- uint64
+	'btoi': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			ctx.push({ op: 'cast', type: uint64, consumes: { value } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: uint64 uint64 -- uint64
 	'%': binop('mod'),
+	'|': binop('bitor', uint64),
 	'&': binop('bitand', uint64),
-	'<': binop('lt', uint64),
-	'>': binop('gt', uint64),
-	'>=': binop('gt', uint64),
-	'<=': binop('gt', uint64),
+	'^': binop('bitxor', uint64),
+	'~': binop('bitnot', uint64),
 	// Signature: []byte []byte -- []byte
 	'b+': binop('add', bytearray),
 	'b-': binop('sub', bytearray),
@@ -116,6 +221,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: uint64 uint64 -- uint64 uint64
 	'mulw': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
 			const rhs = ctx.pop()
@@ -125,41 +231,46 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		},
 	},
-	// Signature: uint64 -- uint64
-	'!': {
+	// -- []byte
+	'arg': {
+		availability: 'v1',
 		next: () => [next],
-		exec(ctx) {
-			const value = ctx.pop()
-			ctx.push({ op: 'not', consumes: { value } })
+		exec(ctx, n) {
+			ctx.push({ op: 'ext_const', type: bytearray, name: `args[${n}]` })
 			return ctx.resolve_label(next)
-		},
+		}
 	},
-	// Signature: []byte -- uint64
-	'btoi': {
+	'arg_0': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
-			const value = ctx.pop()
-			ctx.push({ op: 'cast', type: uint64, consumes: { value } })
+			ctx.push({ op: 'ext_const', type: bytearray, name: `args[0]` })
 			return ctx.resolve_label(next)
-		},
+		}
 	},
-	// Signature: uint64 -- []byte
-	'itob': {
+	'arg_1': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
-			const value = ctx.pop()
-			ctx.push({ op: 'cast', type: bytearray, consumes: { value } })
+			ctx.push({ op: 'ext_const', type: bytearray, name: `args[1]` })
 			return ctx.resolve_label(next)
-		},
+		}
 	},
-	// Signature: []byte -- []byte
-	'sha512_256': {
+	'arg_2': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
-			const value = ctx.pop()
-			ctx.push({ op: 'hash', algo: 'sha512_256', consumes: { value } })
+			ctx.push({ op: 'ext_const', type: bytearray, name: `args[2]` })
 			return ctx.resolve_label(next)
-		},
+		}
+	},
+	'arg_3': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx) {
+			ctx.push({ op: 'ext_const', type: bytearray, name: `args[3]` })
+			return ctx.resolve_label(next)
+		}
 	},
 	// Signature: -- []byte
 	'addr': {
@@ -198,6 +309,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: uint64 --
 	'bnz': {
+		availability: 'v1',
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
@@ -221,6 +333,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: any -- any any
 	'dup': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
 			const value_handle = ctx.pop()
@@ -306,6 +419,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: any --
 	'pop': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx) {
 			ctx.pop()
@@ -320,17 +434,6 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		}
 	},
-	// Signature: --
-	'err': {
-		next: () => [],
-		exec() {
-			return {
-				kind: 'exit',
-				label: 'err',
-				consumes: {}
-			}
-		},
-	},
 	// Signature: uint64 --
 	'assert': {
 		next: () => [next],
@@ -341,6 +444,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: -- any
 	'global': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx, name) {
 			ctx.push({ op: 'ext_const', type: any, name: `global.${name}` })
@@ -349,6 +453,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: -- any
 	'gtxn': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx, txn, field: TxnFieldName) {
 			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `gtxn[${txn}].${field}` })
@@ -357,6 +462,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: -- any
 	'txn': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx, field: TxnFieldName) {
 			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `txn.${field}` })
@@ -472,6 +578,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: -- any
 	'load': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx, key) {
 			// FIXME: We should SSA these
@@ -481,6 +588,7 @@ const isn: Record<string, InstructionDescription> = {
 	},
 	// Signature: any --
 	'store': {
+		availability: 'v1',
 		next: () => [next],
 		exec(ctx, key) {
 			// FIXME: We should SSA these

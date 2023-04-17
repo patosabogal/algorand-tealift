@@ -417,6 +417,40 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		}
 	},
+	// Signature: []byte []byte -- []byte
+	// Signature: []byte uint64 []byte -- []byte
+	'replace': {
+		next: () => [next],
+		exec(ctx, maybeIndex) {
+			if (maybeIndex) {
+				return isn['replace2']!.exec(ctx, maybeIndex)
+			} else {
+				return isn['replace3']!.exec(ctx)
+			}
+		}
+	},
+	// Signature: []byte uint64 []byte -- []byte
+	'replace2': {
+		next: () => [next],
+		exec(ctx, indexArgument) {
+			const replacement = ctx.pop()
+			const index = ctx.add_value({ op: 'const', type: uint64, value: parseInt(indexArgument) || indexArgument })
+			const value = ctx.pop()
+			ctx.push({ op: 'replace', consumes: { value, index, replacement } })
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: []byte uint64 []byte -- []byte
+	'replace3': {
+		next: () => [next],
+		exec(ctx) {
+			const replacement = ctx.pop()
+			const index = ctx.pop()
+			const value = ctx.pop()
+			ctx.push({ op: 'replace', consumes: { value, index, replacement } })
+			return ctx.resolve_label(next)
+		}
+	},
 	// Signature: any --
 	'pop': {
 		availability: 'v1',

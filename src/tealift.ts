@@ -477,6 +477,16 @@ const isn: Record<string, InstructionDescription> = {
 		}
 	},
 	// Signature: -- any
+	'popn': {
+		availability: 'v8',
+		next: () => [next],
+		exec(ctx, value) {
+			const index = ctx.add_value({ op: 'popn', type: uint64, value: parseInt(value) || value })
+			this.exec(ctx, index)
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: -- any
 	'global': {
 		availability: 'v1',
 		next: () => [next],

@@ -1,0 +1,83 @@
+// tests/procedure_code_reuse.teal
+digraph {
+rankdir=TD
+subgraph "clusteradd" {
+
+label="add"
+
+"node20" [label="Region(add)", color=red]
+
+"node31" [label="Arg(0)"]
+
+"node42" [label="Arg(1)"]
+
+node53 [label="+", shape=circle]
+
+"node64" [label="retsub", color=red]
+
+}
+subgraph "clusteradd_3" {
+
+label="add_3"
+
+"node19" [label="Region(add_3)", color=red]
+
+"node30" [label="3: uint64", shape=rectangle]
+
+"node41" [label="Arg(0)"]
+
+node52 [label="+", shape=circle]
+
+"node63" [label="retsub", color=red]
+
+}
+subgraph "clustertests/procedure_code_reuse.teal:0" {
+
+label="tests/procedure_code_reuse.teal:0"
+
+"node12" [label="Region(tests/procedure_code_reuse.teal:0)", color=red]
+
+"node23" [label="1: uint64", shape=rectangle]
+
+"node34" [label="2: uint64", shape=rectangle]
+
+node45 [label="Call(add)"]
+
+node56 [label="Result(0)"]
+
+"node67" [label="1: uint64", shape=rectangle]
+
+node78 [label="Call(add_3)"]
+
+node89 [label="Result(0)"]
+
+node100 [label="+", shape=circle]
+
+"node111" [label="return", color=red]
+
+}
+"node31" -> "node53" [label="rhs"]
+"node42" -> "node53" [label="lhs"]
+"node53" -> "node64" [label="0"]
+"node20" -> "node64" [style=dashed]
+
+"node34" -> "node45" [label="Arg(0)"]
+"node23" -> "node45" [label="Arg(1)"]
+"node12" -> "node45" [style=dashed]
+
+"node45" -> "node56" [label="call"]
+"node30" -> "node52" [label="rhs"]
+"node41" -> "node52" [label="lhs"]
+"node52" -> "node63" [label="0"]
+"node19" -> "node63" [style=dashed]
+
+"node67" -> "node78" [label="Arg(0)"]
+"node45" -> "node78" [style=dashed]
+
+"node78" -> "node89" [label="call"]
+"node89" -> "node100" [label="rhs"]
+"node56" -> "node100" [label="lhs"]
+"node100" -> "node111" [label="value"]
+"node78" -> "node111" [style=dashed]
+
+}

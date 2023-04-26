@@ -44,6 +44,8 @@ interface AbstractExecutionContext {
 	push_handle(value_hash: AbstractValueID): AbstractValueID
 	pop(): AbstractValueID
 	sequence_point(label: string, consumes: DataDependencies): AbstractValueID
+	// NOTE: Should only be used sparingly
+	get_value(value: AbstractValueID): AbstractValue
 	add_value(value: AbstractValue): AbstractValueID
 	resolve_label(label: string, case_name?: string): JumpDescription
 	call_to(proc_label: string): void
@@ -313,6 +315,16 @@ const isn: Record<string, InstructionDescription> = {
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
+			// Try to detect if this `bnz` is just a regular old `b`
+			//
+			// v2 added both `b` and `bz` so this kind of code should only appear on `bnz`
+			// for really old contracts.
+			const condition_value = ctx.get_value(condition);
+			if (condition_value.op === 'const' && condition_value.type === uint64) {
+				return condition_value.value === 0
+					? ctx.resolve_label(next)
+					: ctx.resolve_label(label)
+			}
 			return {
 				kind: 'switch',
 				consumes: { condition },
@@ -324,6 +336,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
+			const condition_value = ctx.get_value(condition);
 			return {
 				kind: 'switch',
 				consumes: { condition },
@@ -893,6 +906,12 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 				sequence_point(label, consumes) {
 					last_sequence_point = this.add_value({ op: 'sequence_point', consumes, control: last_sequence_point, label })
 					return last_sequence_point
+				},
+				get_value(value_hash) {
+					const value = values.get(value_hash)
+					if (value === undefined)
+						throw new Error('No value was registered for id ' + value_hash)
+					return value
 				},
 				add_value(value) {
 					const value_hash = program.length * value_id++ + (region_id + 1)

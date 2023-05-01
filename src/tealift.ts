@@ -519,7 +519,27 @@ const isn: Record<string, InstructionDescription> = {
 		availability: 'v2',
 		next: () => [next],
 		exec(ctx) {
-			return ctx.resolve_label(next);
+			const end = ctx.pop()
+			const start = ctx.pop()
+			const word: any = ctx.pop()
+			if (end > start) {
+				const newWord = word.slice(start, end)
+				ctx.push({ op: 'const', type: bytearray, value: newWord })
+			}
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: -- any
+	'substring': {
+		availability: 'v2',
+		next: () => [next],
+		exec(ctx, field) {
+			const word: any = ctx.pop()
+			if (field.end > field.start) {
+				const newWord = word.slice(field.start, field.end)
+				ctx.push({ op: 'const', type: bytearray, value: newWord })
+			}
+			return ctx.resolve_label(next)
 		},
 	},
 	// Signature: -- any

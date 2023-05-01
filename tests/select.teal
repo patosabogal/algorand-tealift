@@ -7,7 +7,6 @@
 // Stack: ..., A, B, C: uint64 → ..., A or B
 // selects one of two values based on top-of-stack: B if C != 0, else A
 // Availability: v3
-//
 
 int 1               // A | Stack = [1]
 int 2               // B | Stack = [1,2]

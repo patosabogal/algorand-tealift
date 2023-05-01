@@ -1,0 +1,32 @@
+#pragma version 3
+
+// # select
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#select
+//
+// Opcode: 0x4d
+// Stack: ..., A, B, C: uint64 → ..., A or B
+// selects one of two values based on top-of-stack: B if C != 0, else A
+// Availability: v3
+//
+
+int 1               // A | Stack = [1]
+int 2               // B | Stack = [1,2]
+int 3               // C | Stack = [1,2,3]
+select              // Stack = [1,2,3,2]
+==
+int 2               // B if C != 0
+
+pop                 // [1,2,3]
+pop                 // [1,2]
+pop                 // [1]
+pop                 // []
+
+byte "Pi es 3.14"   // A | Stack = ["Pi es 3.14"]
+byte "Pi es PI"     // B | Stack =["Pi es 3.14","Pi es PI"]
+int 0               // C | Stack = ["Pi es 3.14","Pi es PI",0]
+select              // Stack = ["Pi es 3.14","Pi es PI",0,"Pi es 3.14"]
+==
+byte "Pi es 3.14"   // A if C == 0
+
+int 1
+return

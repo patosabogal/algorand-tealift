@@ -493,7 +493,26 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			ctx.pop()
 			// TODO: Traer el ultimo bloque?
+			return ctx.resolve_label(next)
 		}
+	},
+	// Signature: -- any
+	'select': {
+		availability: 'v3',
+		next: () => [next],
+		exec(ctx) {
+			// Que data type va aca?
+			const C: any = ctx.pop()
+			const B: any = ctx.pop()
+			const A: any = ctx.pop()
+			if (C == 0) {
+				ctx.push({ op: 'const', type: any, value: parseInt(A) || A })
+				return ctx.resolve_label(next)
+			} else {
+				ctx.push({ op: 'const', type: any, value: parseInt(B) || B })
+				return ctx.resolve_label(next)
+			}
+		},
 	},
 	// Signature: -- any
 	'global': {

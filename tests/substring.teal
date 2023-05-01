@@ -1,0 +1,18 @@
+#pragma version 3
+
+// 
+// # substring3
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#substring3
+//
+// Opcode: 0x52
+// Stack: ..., A: []byte, B: uint64, C: uint64 → ..., []byte
+// A range of bytes from A starting at B up to but not including C. If C < B, or either is larger than the array length, the program fails
+// Availability: v2
+
+byte "Onomatopeya"      // ["Onomatopeya"]
+int 3                   // ["Onomatopeya", 3]
+int 7                   // ["Onomatopeya", 3, 7]
+substring3              // ["Onomatopeya", 3, 7, "mato"]
+byte "mato"
+==
+assert

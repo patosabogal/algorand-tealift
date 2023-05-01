@@ -501,7 +501,7 @@ const isn: Record<string, InstructionDescription> = {
 		availability: 'v3',
 		next: () => [next],
 		exec(ctx) {
-			// Que data type va aca?
+			// TODO: Que data type va aca?
 			const C: any = ctx.pop()
 			const B: any = ctx.pop()
 			const A: any = ctx.pop()
@@ -512,6 +512,14 @@ const isn: Record<string, InstructionDescription> = {
 				ctx.push({ op: 'const', type: any, value: parseInt(B) || B })
 				return ctx.resolve_label(next)
 			}
+		},
+	},
+	// Signature: -- any
+	'substring3': {
+		availability: 'v2',
+		next: () => [next],
+		exec(ctx) {
+			return ctx.resolve_label(next);
 		},
 	},
 	// Signature: -- any

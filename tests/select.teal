@@ -13,8 +13,9 @@ int 1               // A | Stack = [1]
 int 2               // B | Stack = [1,2]
 int 3               // C | Stack = [1,2,3]
 select              // Stack = [1,2,3,2]
-==
 int 2               // B if C != 0
+==
+assert
 
 pop                 // [1,2,3]
 pop                 // [1,2]
@@ -25,8 +26,9 @@ byte "Pi es 3.14"   // A | Stack = ["Pi es 3.14"]
 byte "Pi es PI"     // B | Stack =["Pi es 3.14","Pi es PI"]
 int 0               // C | Stack = ["Pi es 3.14","Pi es PI",0]
 select              // Stack = ["Pi es 3.14","Pi es PI",0,"Pi es 3.14"]
-==
 byte "Pi es 3.14"   // A if C == 0
+==
+assert
 
 int 1
 return

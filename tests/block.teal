@@ -1,0 +1,22 @@
+#pragma version 7
+
+// # block f
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#block-f
+//
+// Opcode: 0xd1 {uint8 block field index}
+// Stack: ..., A: uint64 → ..., any
+// field F of block A. Fail unless A falls between txn.LastValid-1002 and txn.FirstValid (exclusive)
+// Availability: v7
+//
+// Index	Name	        Type
+// 0	    BlkSeed	        []byte	
+// 1	    BlkTimestamp	uint64
+//
+
+block 0         // [byte[]]
+block 1    // [byte[], uint64]
+!=
+assert
+
+int 1
+return

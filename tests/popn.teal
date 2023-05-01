@@ -12,7 +12,7 @@ byte "Value 1"  // ["Value 1"]
 int 2           // ["Value 1", 2]
 int 3           // ["Value 1", 2, 3]
 byte "Value 4"  // ["Value 1", 2, 3, "Value 4"]
-popn 3
+popn 3          // ["Value1"]
 
 int 1
 return

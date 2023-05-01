@@ -480,10 +480,19 @@ const isn: Record<string, InstructionDescription> = {
 	'popn': {
 		availability: 'v8',
 		next: () => [next],
-		exec(ctx, value) {
-			const index = ctx.add_value({ op: 'popn', type: uint64, value: parseInt(value) || value })
-			this.exec(ctx, index)
+		exec(ctx, count) {
+			for (let i = 0; i < count; i++)
+			ctx.pop()
 			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: -- any
+	'block': {
+		availability: 'v7',
+		next: () => [next],
+		exec(ctx) {
+			ctx.pop()
+			// TODO: Traer el ultimo bloque?
 		}
 	},
 	// Signature: -- any

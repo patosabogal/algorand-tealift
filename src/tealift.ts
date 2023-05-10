@@ -482,8 +482,8 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx, count) {
 			for (let i = 0; i < count; i++)
-			ctx.pop()
-			return ctx.resolve_label(next)
+				ctx.pop()
+				return ctx.resolve_label(next)
 		}
 	},
 	// Signature: -- any
@@ -493,6 +493,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			ctx.pop()
 			// TODO: Traer el ultimo bloque?
+			ctx.push({ 'op': 'unknown' })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -505,13 +506,8 @@ const isn: Record<string, InstructionDescription> = {
 			const C: any = ctx.pop()
 			const B: any = ctx.pop()
 			const A: any = ctx.pop()
-			if (C == 0) {
-				ctx.push({ op: 'const', type: any, value: parseInt(A) || A })
-				return ctx.resolve_label(next)
-			} else {
-				ctx.push({ op: 'const', type: any, value: parseInt(B) || B })
-				return ctx.resolve_label(next)
-			}
+			ctx.push({ op: 'select', consumes: { condition: C, on_zero: A, on_nonzero: B } })
+			return ctx.resolve_label(next)
 		},
 	},
 	// Signature: -- any
@@ -522,10 +518,7 @@ const isn: Record<string, InstructionDescription> = {
 			const end = ctx.pop()
 			const start = ctx.pop()
 			const word: any = ctx.pop()
-			if (end > start) {
-				const newWord = word.slice(start, end)
-				ctx.push({ op: 'const', type: bytearray, value: newWord })
-			}
+			ctx.push({ op: 'substring3', consumes: { word, start: start, end: end } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -535,10 +528,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx, field) {
 			const word: any = ctx.pop()
-			if (field.end > field.start) {
-				const newWord = word.slice(field.start, field.end)
-				ctx.push({ op: 'const', type: bytearray, value: newWord })
-			}
+			ctx.push({ op: 'substring3', consumes: { word, start: field.start, end: field.end } })
 			return ctx.resolve_label(next)
 		},
 	},

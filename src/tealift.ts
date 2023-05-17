@@ -543,9 +543,16 @@ const isn: Record<string, InstructionDescription> = {
 		}
 	},
 		// Signature: --any
-	// 'stores': {
-
-	// },
+	'stores': {
+		availability: 'v5',
+		next: () => [next],
+		exec(ctx) {
+			const index = ctx.pop()
+			const value = ctx.pop()
+			ctx.push({ op: 'stores', consumes: { index, value } })
+			return ctx.resolve_label(next)
+		}
+	},
 	// Signature: -- any
 	'global': {
 		availability: 'v1',

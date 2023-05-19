@@ -2,6 +2,7 @@ import assert, { fail } from 'assert'
 import txn_fields from './txn_fields'
 import txna_fields from './txna_fields'
 import asset_holding_fields from './asset_holding_fields'
+import { get_list, range, enumerate, zip } from './utils'
 
 type TxnFieldName = keyof typeof txn_fields
 type TxnaFieldName = keyof typeof txna_fields
@@ -21,7 +22,7 @@ export type InstructionID = number
 export type DataDependencies = Record<string, AbstractValueID>
 export type LabelMapping = Map<string, InstructionID>
 export type ValueMap = Map<AbstractValueID, AbstractValue>
-export type RegionMap = Map<AbstractValueID, RegionInfo>
+export type RegionMap = Map<RegionID, RegionInfo>
 export type RegionInfo = {
 	name: string
 	pops: number
@@ -336,7 +337,6 @@ const isn: Record<string, InstructionDescription> = {
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
-			const condition_value = ctx.get_value(condition);
 			return {
 				kind: 'switch',
 				consumes: { condition },
@@ -756,42 +756,6 @@ const gather_labels = (program: Program): LabelMapping => {
 		}
 	})
 	return labels
-}
-
-function* enumerate<T>(iterable: Iterable<T>): Iterable<[T, number]> {
-	let i = 0
-	for (const v of iterable)
-		yield [v, i++]
-}
-
-function* zip<A, B>(xs: Iterable<A>, ys: Iterable<B>): Iterable<[A, B]> {
-	const it = ys[Symbol.iterator]()
-	for (const x of xs) {
-		const { done, value: y } = it.next()
-		if (done) return
-		yield [x, y]
-	}
-}
-
-function range(to: number): Iterable<number>
-function range(from: number, to: number): Iterable<number>
-function range(from: number, to: number, step: number): Iterable<number>
-function* range(from: number, to?: number, step?: number) {
-	if (to === undefined)
-		[to, from] = [from, 0]
-	if (step === undefined)
-		step = 1
-	for (let i = from; i < to; i += step)
-		yield i
-}
-
-export const get_list = <K, V>(map: Map<K, V[]>, key: K): V[] => {
-	let result = map.get(key)
-	if (result === undefined) {
-		result = []
-		map.set(key, result)
-	}
-	return result
 }
 
 export const process_file = (filename: string): [Program, LabelMapping] => {

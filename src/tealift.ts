@@ -491,9 +491,9 @@ const isn: Record<string, InstructionDescription> = {
 		availability: 'v7',
 		next: () => [next],
 		exec(ctx) {
-			ctx.pop()
+			const index = ctx.pop()
 			// TODO: Traer el ultimo bloque?
-			ctx.push({ 'op': 'unknown' })
+			ctx.push({ op: 'block', consumes: { index } })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -538,7 +538,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx) {
 			const index = ctx.pop()
-			ctx.push({ op: 'loads', consumes: { index } })
+			ctx.push({ op: 'loads', consumes: { index }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -549,7 +549,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const index = ctx.pop()
 			const value = ctx.pop()
-			ctx.push({ op: 'stores', consumes: { index, value } })
+			ctx.push({ op: 'stores', consumes: { index, value }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		}
 	},

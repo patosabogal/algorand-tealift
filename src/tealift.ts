@@ -2,10 +2,12 @@ import assert, { fail } from 'assert'
 import txn_fields from './txn_fields'
 import txna_fields from './txna_fields'
 import asset_holding_fields from './asset_holding_fields'
+import block_fields from './block_fields'
 
 type TxnFieldName = keyof typeof txn_fields
 type TxnaFieldName = keyof typeof txna_fields
 type AssetHoldingFieldName = keyof typeof asset_holding_fields
+type BlockFieldName = keyof typeof block_fields
 
 const uint64 = 'uint64'
 const bytearray = '[]byte'
@@ -486,6 +488,85 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx) {
 			ctx.sequence_point('assert', { value: ctx.pop() })
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: any1, any2, ... anyN --
+	'popn': {
+		availability: 'v8',
+		next: () => [next],
+		exec(ctx, count) {
+			count = parseInt(count)
+			for (let i = 0; i < count; i++)
+				ctx.pop()
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: uint64 -- any
+	'block': {
+		availability: 'v7',
+		next: () => [next],
+		exec(ctx, field: BlockFieldName) {
+			const index = ctx.pop()
+			const { name, type } = block_fields[field]
+			ctx.push({ op: 'ext_const', type, name, consumes: { index } })
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: any any uint64 -- any
+	'select': {
+		availability: 'v3',
+		next: () => [next],
+		exec(ctx) {
+			const C = ctx.pop()
+			const B = ctx.pop()
+			const A = ctx.pop()
+			ctx.push({ op: 'select', consumes: { condition: C, on_zero: A, on_nonzero: B } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: byte[] uint64 uint64 -- byte[]
+	'substring3': {
+		availability: 'v2',
+		next: () => [next],
+		exec(ctx) {
+			const end = ctx.pop()
+			const start = ctx.pop()
+			const word = ctx.pop()
+			ctx.push({ op: 'substring', consumes: { word, start, end } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: byte[] -- byte[]
+	'substring': {
+		availability: 'v2',
+		next: () => [next],
+		exec(ctx, start, end) {
+			end = ctx.add_value({ op: 'const', type: uint64, value: parseInt(end) || end })
+			start = ctx.add_value({ op: 'const', type: uint64, value: parseInt(start) || start })
+			const word = ctx.pop()
+			ctx.push({ op: 'substring', consumes: { word, start, end } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: uint64 -- any
+	'loads': {
+		availability: 'v5',
+		next: () => [next],
+		exec(ctx) {
+			const index = ctx.pop()
+			ctx.push({ op: 'loads', consumes: { index }, control: ctx.last_sequence_point })
+			return ctx.resolve_label(next)
+		}
+	},
+	// Signature: uint64 any --
+	'stores': {
+		availability: 'v5',
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			const index = ctx.pop()
+			ctx.sequence_point('stores', { index, value })
 			return ctx.resolve_label(next)
 		}
 	},

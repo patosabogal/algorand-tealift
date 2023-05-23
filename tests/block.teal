@@ -12,10 +12,13 @@
 // 0	    BlkSeed	        []byte	
 // 1	    BlkTimestamp	uint64
 
-block 0         // [byte[]]
-block 1    // [byte[], uint64]
-!=
-assert
+int 999999         // [999999]
+dup                // [999999, 999999]
+block BlkSeed      // [999999, Block[999999].BlkSeed]
+swap               // [Block[999999].BlkSeed, 999999]
+block BlkTimestamp // [Block[999999].BlkSeed, Block[999999].BlkTimestamp]
+!=                 // [true]
+assert             // []
 
-int 1
-return
+int 1  // [1]
+return // []

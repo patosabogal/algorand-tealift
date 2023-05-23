@@ -16,11 +16,6 @@ int 2               // B if C != 0
 ==
 assert
 
-pop                 // [1,2,3]
-pop                 // [1,2]
-pop                 // [1]
-pop                 // []
-
 byte "Pi es 3.14"   // A | Stack = ["Pi es 3.14"]
 byte "Pi es PI"     // B | Stack =["Pi es 3.14","Pi es PI"]
 int 0               // C | Stack = ["Pi es 3.14","Pi es PI",0]

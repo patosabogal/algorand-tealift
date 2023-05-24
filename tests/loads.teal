@@ -1,0 +1,27 @@
+#pragma version 5
+
+// # loads
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#loads
+//
+// Opcode: 0x3e
+// Stack: ..., A: uint64 → ..., any
+// Ath scratch space value. All scratch spaces are 0 at program start.
+// Availability: v5
+
+int 1               // [1]
+store 0             // []
+int 2               // [2]
+store 1             // []
+byte "Value 1"      // ["Value 1"]
+store 2             // []
+byte "Value 2"      // ["Value 2"]
+store 3             // []
+
+int 2               // [2]
+loads               // ["Value 1"]
+byte "Value 1"      // ["Value 1", "Value 1"]
+==
+assert
+
+int 1
+return

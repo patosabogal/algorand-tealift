@@ -1,0 +1,25 @@
+#pragma version 5
+
+// # stores
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#stores
+
+// stores
+// Opcode: 0x3f
+// Stack: ..., A: uint64, B → ...
+// store B to the Ath scratch space
+// Availability: v5
+
+
+int 54              // [54]
+byte "notvalue"     // [54,"notvalue"]
+int 57              // [54,"notvalue",57]
+byte "value"        // [54,"notvalue",57,"value"]
+stores              // [54,"notvalue"]
+
+load 57
+byte "value"
+==
+assert
+
+int 1
+return

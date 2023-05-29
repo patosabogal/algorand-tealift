@@ -1,0 +1,14 @@
+#pragma version 2
+
+// # app_global_get_ex
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#app_global_get_ex
+
+// Opcode: 0x65
+// Stack: ..., A: uint64, B: []byte → ..., X: any, Y: uint64
+// X is the global state of application A, key B. Y is 1 if key existed, else 0
+// Availability: v2
+// Mode: Application
+// params: Txn.ForeignApps offset (or, since v4, an available application id), state key. 
+// Return: did_exist flag (top of the stack, 1 if the application and key existed and 0 otherwise), 
+// value. The value is zero (of type uint64) if the key does not exist.
+

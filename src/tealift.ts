@@ -685,6 +685,17 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		},
 	},
+	// Signature: uint64 byte[] any --
+	'app_local_get_ex': {
+		next: () => [next],
+		exec(ctx) {
+			const account = ctx.pop()
+			const value = ctx.pop()
+			const key = ctx.pop()
+			ctx.sequence_point('Local Get Ex', { account, key, value })
+			return ctx.resolve_label(next)
+		}
+	},
 	// Signature: byte[] --
 	'app_global_del': {
 		next: () => [next],
@@ -703,6 +714,16 @@ const isn: Record<string, InstructionDescription> = {
 			ctx.sequence_point('Delete Global', { account, key })
 			return ctx.resolve_label(next)
 		},
+	},
+	// Signature: uint64 byte[] any --
+	'app_global_get_ex': {
+		next: () => [next],
+		exec(ctx) {
+			const value = ctx.pop()
+			const key = ctx.pop()
+			ctx.sequence_point('Global Get Ex', { key, value })
+			return ctx.resolve_label(next)
+		}
 	},
 	// Signature: -- any
 	'load': {

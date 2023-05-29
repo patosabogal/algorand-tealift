@@ -1,0 +1,14 @@
+#pragma version 2
+
+// # app_local_get_ex
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#app_local_get_ex
+
+// Opcode: 0x63
+// Stack: ..., A, B: uint64, C: []byte → ..., X: any, Y: uint64
+// X is the local state of application B, key C in account A. Y is 1 if key existed, else 0
+// Availability: v2
+// Mode: Application
+// params: Txn.Accounts offset (or, since v4, an available account address),
+// available application id (or, since v4, a Txn.ForeignApps offset), state key.
+// Return: did_exist flag (top of the stack, 1 if the application and key existed and 0 otherwise), value.
+// The value is zero (of type uint64) if the key does not exist.

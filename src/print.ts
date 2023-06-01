@@ -1,68 +1,14 @@
 import assert from "assert"
 import { AbstractValue, AbstractValueID, DataDependencies, RegionID, abstract_exec_program, process_file } from "./tealift"
-
-/**
- * // Format
- * {
- *   entrypoint: <idx_into_bbs>
- *   basic_blocks: [
- *     {
- *       incoming_edges: [<idx_into_bbs>],
- *       outgoing_edges: [<idx_into_bbs>],
- *       // phis[i][j] is the value for the i-th phi when coming from incoming_edges[j]
- *       phis: [[<idx_into_bb_instructions>]],
- *       instructions: [
- *         {
- *           op: <operation_name>,
- *           args: [<operation_arguments>],
- *           // phi values are encoded as -i-1
- *           consumes: [<idx_into_bb_instructions> | <negative_idx_into_phis>]
- *         }
- *       ],
- *       terminal: {
- *         op: <terminal_name>,
- *         args: [<operation_arguments>],
- *         consumes: [<idx_into_bb_instructions> | <negative_idx_into_phis>],
- *       }
- *     }
- *   ]
- * }
- */
-type JSONifiedProgram = {
-	entrypoint: BasicBlockIndex
-	basic_blocks: BasicBlock[]
-}
-type BasicBlockIndex = number
-type BasicBlock = {
-	incoming_edges: BasicBlockIndex[]
-	outgoing_edges: BasicBlockIndex[]
-    // phis[i][j] is the value for the i-th phi when coming from incoming_edges[j]
-	phis: InstructionIndex[][]
-	instructions: Instruction[]
-	terminal: Terminal
-}
-type InstructionIndex = number
-type Instruction = {
-	op: OperationName
-	args: OperationArguments[]
-	consumes: (InstructionIndex | PhiIndex)[]
-}
-type OperationName = string
-type OperationArguments = any
-type PhiIndex = number
-type Terminal = {
-	op: TerminalOperationName
-	args: OperationArguments[]
-	consumes: (InstructionIndex | PhiIndex)[]
-}
-type TerminalOperationName = string
+import type { BasicBlock, BasicBlockIndex, Instruction, InstructionIndex, JSONifiedProgram, OperationName, PhiIndex, Terminal, TerminalOperationName } from "./json_output_types"
+import { format_jsonified_program } from "./format_jsonified_program"
 
 function is_terminal(instruction: { op: OperationName | TerminalOperationName }): instruction is Terminal {
-	return instruction.op === 'switch' || instruction.op === 'exit'
+	return instruction.op === 'switch-on-zero' || instruction.op === 'exit'
 }
 
 function is_not_instruction(value: AbstractValue) {
-	return value.op === 'phi' || value.op === 'region' || value.op === 'switch' || value.op === 'on' || value.op === 'exit' || value.op === 'sequence_point'
+	return value.op === 'phi' || value.op === 'region' || value.op === 'on'
 }
 
 const build_jsonified_program = (filename: string) => {
@@ -88,7 +34,7 @@ const build_jsonified_program = (filename: string) => {
 		const basic_block_idx = region_id_to_basic_block_idx.get(region_id)!
 		const outgoing = region.successors.map(successor_region_id => region_id_to_basic_block_idx.get(successor_region_id)!)
 		for (const outgoing_idx of outgoing) {
-			cfg_edges.get(outgoing_idx)!.incoming.push(outgoing_idx)
+			cfg_edges.get(outgoing_idx)!.incoming.push(basic_block_idx)
 		}
 		cfg_edges.get(basic_block_idx)!.outgoing = outgoing
 	}
@@ -148,11 +94,11 @@ const build_jsonified_program = (filename: string) => {
 		phi: () => [],
 		// CFG Operations
 		region: () => [],
-		switch: () => [],
+		'switch-on-zero': () => [],
 		on: () => [],
 		arg: (value) => [value.idx],
 		exit: (value) => [value.label],
-		sequence_point: () => [],
+		sequence_point: (value) => [value.label],
 	}
 
 	function jsonify_instruction(value: AbstractValue): Instruction | Terminal {
@@ -197,6 +143,21 @@ const build_jsonified_program = (filename: string) => {
 			}
 		}
 		jsonified_program.basic_blocks.push(basic_block)
+		for (const phi_hash of region.phis) {
+			const value = values.get(phi_hash)!
+			const idx = hash_to_idx.get(phi_hash)!
+			const phi_array_idx = ~idx
+			const phi_options: InstructionIndex[] = []
+			basic_block.phis[phi_array_idx] = phi_options
+			for (const [consumed_region_id_str, consumed_value_hash] of Object.entries<number>(value.consumes)) {
+				const consumed_region_id = parseInt(consumed_region_id_str)
+				const consumed_basic_block_idx = region_id_to_basic_block_idx.get(consumed_region_id)!
+				const predecessor_idx = basic_block.incoming_edges.indexOf(consumed_basic_block_idx)
+				assert(predecessor_idx !== -1, "Internal Error: phi node has value for an impossible predecessor")
+				const consumed_idx = hash_to_idx.get(consumed_value_hash)!
+				phi_options[predecessor_idx] = consumed_idx
+			}
+		}
 		for (const value_hash of region.values) {
 			const value = values.get(value_hash)!
 			if (is_not_instruction(value)) {
@@ -213,16 +174,20 @@ const build_jsonified_program = (filename: string) => {
 		if (basic_block.terminal.op === 'uninitialized') {
 			// No terminal operation on the whole region. Insert a fallthrough jump
 			basic_block.terminal.op = 'jmp'
+			assert(basic_block.outgoing_edges.length === 1, "Internal Error: No terminal operation found but basic block has multiple destinations")
 		}
 	}
 	return jsonified_program
 }
 
-const file = process.argv[2]
-if (file === undefined) {
-	console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>')
-	process.exit(1)
-}
+if (require.main === module) {
+	const file = process.argv[2]
+	if (file === undefined) {
+		console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>')
+		process.exit(1)
+	}
 
-const program = build_jsonified_program(file)
-console.log(JSON.stringify(program, null, 2))
+	const program = build_jsonified_program(file)
+	console.log(JSON.stringify(program, null, 2))
+	console.log(format_jsonified_program(program))
+}

@@ -63,7 +63,7 @@ interface AbstractExecutionContext {
 
 type JumpDescription   = { kind: 'jump', label: string, instruction_idx: InstructionID }
 type ExitDescription   = { kind: 'exit', label: string, consumes: DataDependencies}
-type SwitchDescription = { kind: 'switch', consumes: DataDependencies, alternatives: JumpDescription[] }
+type SwitchDescription = { kind: 'switch-on-zero', consumes: DataDependencies, alternatives: JumpDescription[] }
 
 type NextStepDescription = JumpDescription | ExitDescription | SwitchDescription
 
@@ -327,7 +327,7 @@ const isn: Record<string, InstructionDescription> = {
 					: ctx.resolve_label(label)
 			}
 			return {
-				kind: 'switch',
+				kind: 'switch-on-zero',
 				consumes: { condition },
 				alternatives: [ctx.resolve_label(next, 'zero'), ctx.resolve_label(label, 'non-zero')]
 			}
@@ -338,9 +338,9 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx, label) {
 			const condition = ctx.pop()
 			return {
-				kind: 'switch',
+				kind: 'switch-on-zero',
 				consumes: { condition },
-				alternatives: [ctx.resolve_label(next, 'non-zero'), ctx.resolve_label(label, 'zero')]
+				alternatives: [ctx.resolve_label(label, 'zero'), ctx.resolve_label(next, 'non-zero')]
 			}
 		},
 	},
@@ -949,8 +949,8 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 					last_sequence_point = ctx.add_value({ op: 'exit', control: last_sequence_point, label: successors.label, consumes: successors.consumes })
 					exit_points.push({ region_id, exit_point: last_sequence_point, popped_arguments, pushed_values: symbolic_stack.length })
 					break region_loop
-				case 'switch':
-					last_sequence_point = ctx.add_value({ op: 'switch', control: last_sequence_point, consumes: successors.consumes })
+				case 'switch-on-zero':
+					last_sequence_point = ctx.add_value({ op: 'switch-on-zero', control: last_sequence_point, consumes: successors.consumes })
 
 					for (const alternative of successors.alternatives) {
 						const projection_hash = ctx.add_value({ op: 'on', control: last_sequence_point, label: alternative.label })

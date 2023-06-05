@@ -12,3 +12,23 @@
 // Return: did_exist flag (top of the stack, 1 if the application and key existed and 0 otherwise), 
 // value. The value is zero (of type uint64) if the key does not exist.
 
+//The _ex opcodes return two values to the stack. 
+// The first value is a 0 or a 1 indicating the value was returned successfully or not, 
+// and the second value on the stack contains the actual value. 
+// These calls allow local and global states to be read from other accounts 
+// and applications (smart contracts) as long as the account and the contract are 
+// in the accounts and applications arrays. To read a local storage value with the 
+// app_local_get_ex opcode the following contract code should be used.
+
+txn Sender                  // [address]
+txn ApplicationID           // [address, appId]
+byte "MyAmountGiven"        // [address, appId, "MyAmountGiven"]
+app_local_get_ex
+
+// Or extracting the key of the contract
+global CurrentApplicationID
+byte "GlobalKey"
+app_global_get_ex
+
+int 1
+return

@@ -721,7 +721,8 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const value = ctx.pop()
 			const key = ctx.pop()
-			ctx.sequence_point('Global Get Ex', { key, value })
+			const account = ctx.pop()
+			ctx.sequence_point('Global Get Ex', { account, key, value })
 			return ctx.resolve_label(next)
 		}
 	},

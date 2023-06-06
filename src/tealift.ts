@@ -689,9 +689,9 @@ const isn: Record<string, InstructionDescription> = {
 	'app_local_get_ex': {
 		next: () => [next],
 		exec(ctx) {
-			const account = ctx.pop()
 			const value = ctx.pop()
 			const key = ctx.pop()
+			const account = ctx.pop()
 			ctx.sequence_point('Local Get Ex', { account, key, value })
 			return ctx.resolve_label(next)
 		}

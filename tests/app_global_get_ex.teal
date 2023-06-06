@@ -1,4 +1,4 @@
-#pragma version 2
+#pragma version 3
 
 // # app_global_get_ex
 // https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#app_global_get_ex
@@ -12,7 +12,7 @@
 // Return: did_exist flag (top of the stack, 1 if the application and key existed and 0 otherwise), 
 // value. The value is zero (of type uint64) if the key does not exist.
 
-//The _ex opcodes return two values to the stack. 
+// The _ex opcodes return two values to the stack. 
 // The first value is a 0 or a 1 indicating the value was returned successfully or not, 
 // and the second value on the stack contains the actual value. 
 // These calls allow local and global states to be read from other accounts 
@@ -22,8 +22,11 @@
 
 txn Sender                  // [address]
 txn ApplicationID           // [address, appId]
-byte "MyAmountGiven"        // [address, appId, "MyAmountGiven"]
-app_local_get_ex
+byte "Value"                // [address, appId, "Value"]
+app_local_get_ex            // [1]
+int 1
+==
+assert
 
 // Or extracting the key of the contract
 global CurrentApplicationID

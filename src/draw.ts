@@ -33,9 +33,6 @@ const draw_ssa = (filename: string, options: DrawSSAOptions) => {
 		cast: (value_hash, value) => `"node${value_hash}" [label="As ${value.type}"]\n`,
 		const: (value_hash, value) => `"node${value_hash}" [label="${value.value}: ${value.type}", shape=rectangle]\n`,
 		ext_const: (value_hash, value) => `"node${value_hash}" [label="${value.name}: ${value.type}", shape=diamond]\n`,
-		global_load: (value_hash) => `"node${value_hash}" [label="Load Global", shape=diamond]\n`,
-		local_load: (value_hash) => `"node${value_hash}" [label="Load Local", shape=diamond]\n`,
-		scratch_load: (value_hash, value) => `"node${value_hash}" [label="Load Scratch(${value.key})", shape=diamond]\n`,
 		hash: (value_hash, value) => `node${value_hash} [label="Hash ${value.algo}"]\n`,
 		call: (value_hash, value) => `node${value_hash} [label="Call(${value.proc_label})"]\n`,
 		'call-result': (value_hash, value) => `node${value_hash} [label="Result(${value.result_idx})"]\n`,
@@ -45,11 +42,20 @@ const draw_ssa = (filename: string, options: DrawSSAOptions) => {
 			let result = `"node${value_hash}" [label="Region(${value.label})", color=red]\n`
 			return result
 		},
-		switch: (value_hash) => `"node${value_hash}" [label="Switch", color=red]\n`,
+		'switch-on-zero': (value_hash) => `"node${value_hash}" [label="switch", color=red]\n`,
 		on: () => '',
 		arg: (value_hash, value) => `"node${value_hash}" [label="Arg(${value.idx})"]\n`,
 		exit: (value_hash, value) => `"node${value_hash}" [label="${value.label}", color=red]\n`,
-		sequence_point: (value_hash, value) => `"node${value_hash}" [label="${value.label || ''}", color=red]\n`,
+		load_global: (value_hash) => `"node${value_hash}" [label="load global", shape=diamond]\n`,
+		store_global: (value_hash) => `"node${value_hash}" [label="store global", color=red]\n`,
+		delete_global: (value_hash) => `"node${value_hash}" [label="delete global", color=red]\n`,
+		load_local: (value_hash) => `"node${value_hash}" [label="load local", shape=diamond]\n`,
+		store_local: (value_hash) => `"node${value_hash}" [label="store local", color=red]\n`,
+		delete_local: (value_hash) => `"node${value_hash}" [label="delete local", color=red]\n`,
+		load_scratch: (value_hash, value) => `"node${value_hash}" [label="load scratch(${value.key})", shape=diamond]\n`,
+		store_scratch: (value_hash, value) => `"node${value_hash}" [label="store scratch(${value.key})", color=red]\n`,
+		log: (value_hash) => `"node${value_hash}" [label="log", color=red]\n`,
+		assert: (value_hash) => `"node${value_hash}" [label="assert", color=red]\n`,
 	}
 	const default_printer: AbstractOPRenderer = (value_hash, value) => `"node${value_hash}" [label="${value.op}", color=blue]`
 	console.log('//', filename)

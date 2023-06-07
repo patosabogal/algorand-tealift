@@ -44,7 +44,7 @@ interface AbstractExecutionContext {
 	push(value: AbstractValue): AbstractValueID
 	push_handle(value_hash: AbstractValueID): AbstractValueID
 	pop(): AbstractValueID
-	sequence_point(label: string, consumes: DataDependencies): AbstractValueID
+	sequence_point(op: AbstractValue): AbstractValueID
 	// NOTE: Should only be used sparingly
 	get_value(value: AbstractValueID): AbstractValue
 	add_value(value: AbstractValue): AbstractValueID
@@ -477,7 +477,7 @@ const isn: Record<string, InstructionDescription> = {
 	'log': {
 		next: () => [next],
 		exec(ctx) {
-			ctx.sequence_point('log', { value: ctx.pop() })
+			ctx.sequence_point({ op: 'log', consumes: { value: ctx.pop() } })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -485,7 +485,7 @@ const isn: Record<string, InstructionDescription> = {
 	'assert': {
 		next: () => [next],
 		exec(ctx) {
-			ctx.sequence_point('assert', { value: ctx.pop() })
+			ctx.sequence_point({ op: 'assert', consumes: { value: ctx.pop() } })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -569,7 +569,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx) {
 			const key = ctx.pop()
-			ctx.push({ op: 'global_load', type: any, name: 'Global', consumes: { key } , control: ctx.last_sequence_point })
+			ctx.push({ op: 'load_global', consumes: { key } , control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -579,7 +579,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const key = ctx.pop()
 			const account = ctx.pop()
-			ctx.push({ op: 'local_load', type: any, name: 'Local', consumes: { key, account }, control: ctx.last_sequence_point })
+			ctx.push({ op: 'load_local', consumes: { key, account }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -589,7 +589,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const value = ctx.pop()
 			const key = ctx.pop()
-			ctx.sequence_point('Store Global', { key, value })
+			ctx.sequence_point({ op: 'store_global', consumes: { key, value } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -600,7 +600,7 @@ const isn: Record<string, InstructionDescription> = {
 			const value = ctx.pop()
 			const key = ctx.pop()
 			const account = ctx.pop()
-			ctx.sequence_point('Store Local', { account, key, value })
+			ctx.sequence_point({ op: 'store_local', consumes: { key, value, account } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -609,7 +609,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx) {
 			const key = ctx.pop()
-			ctx.sequence_point('Delete Global', { key })
+			ctx.sequence_point({ op: 'delete_global', consumes: { key } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -619,7 +619,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const key = ctx.pop()
 			const account = ctx.pop()
-			ctx.sequence_point('Delete Global', { account, key })
+			ctx.sequence_point({ op: 'delete_local', consumes: { key, account } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -629,7 +629,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx, key) {
 			// FIXME: We should SSA these
-			ctx.push({ op: 'scratch_load', key, control: ctx.last_sequence_point })
+			ctx.push({ op: 'load_scratch', key, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -640,7 +640,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx, key) {
 			// FIXME: We should SSA these
 			const value = ctx.pop()
-			ctx.sequence_point(`Store Scratch(${key})`, { value })
+			ctx.sequence_point({ op: 'store_scratch', key, consumes: { value } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -867,8 +867,9 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 					}
 					throw new Error('Stack underflow detected outside subprocedure\n' + format_instruction(program[instruction_idx]!))
 				},
-				sequence_point(label, consumes) {
-					last_sequence_point = this.add_value({ op: 'sequence_point', consumes, control: last_sequence_point, label })
+				sequence_point(op) {
+					op.control = last_sequence_point
+					last_sequence_point = this.add_value(op)
 					return last_sequence_point
 				},
 				get_value(value_hash) {

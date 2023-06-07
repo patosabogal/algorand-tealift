@@ -85,9 +85,14 @@ const build_jsonified_program = (filename: string) => {
 		cast: (value) => [value.type],
 		const: (value) => [value.type, value.value],
 		ext_const: (value) => [value.type, value.name],
-		global_load: () => ['global'],
-		local_load: () => ['local'],
-		scratch_load: (value) => ['scratch', value.key],
+		load_global: () => [],
+		store_global: () => [],
+		delete_global: () => [],
+		load_local: () => [],
+		store_local: () => [],
+		delete_local: () => [],
+		load_scratch: (value) => [value.key],
+		store_scratch: (value) => [value.key],
 		hash: (value) => [value.algo],
 		call: (value) => [value.proc_label],
 		'call-result': (value) => [value.result_idx],
@@ -98,7 +103,6 @@ const build_jsonified_program = (filename: string) => {
 		on: () => [],
 		arg: (value) => [value.idx],
 		exit: (value) => [value.label],
-		sequence_point: (value) => [value.label],
 	}
 
 	function jsonify_instruction(value: AbstractValue): Instruction | Terminal {

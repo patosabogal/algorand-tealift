@@ -1,0 +1,13 @@
+int 1
+int 2
+callsub add
+int 1
+callsub add_3
++
+return
+
+add_3:
+    int 3
+add:
+    +
+    retsub

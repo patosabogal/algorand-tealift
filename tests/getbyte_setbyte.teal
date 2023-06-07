@@ -1,0 +1,9 @@
+byte "TEST"
+dup
+int 0
+getbyte
+int 3
++
+int 0
+swap
+setbyte

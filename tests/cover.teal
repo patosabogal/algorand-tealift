@@ -1,0 +1,11 @@
+int 1
+int 2
+int 3   // 1 2 3
+cover 0 // 1 2 3
+dup
+store 3 // 1 2 3
+cover 3 // 3 1 2
+store 2
+store 1
+store 3
+err

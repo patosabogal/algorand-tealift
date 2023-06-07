@@ -1,0 +1,15 @@
+int x
+int x
+int 9
+<
+bnz add_6
+
+int 4
+b end
+
+add_6:
+int 6
+
+end:
++
+return

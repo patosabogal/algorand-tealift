@@ -1,0 +1,12 @@
+int 1
+callsub variable_stack_effect
+return
+
+variable_stack_effect:
+    dup
+    int 9
+    <
+    bnz end
+    dup
+end:
+    retsub

@@ -1,0 +1,9 @@
+==
+assert
+extract_uint64
+load
+pushbytes
+pushint
+return
+store
+txn

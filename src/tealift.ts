@@ -1,14 +1,16 @@
 import assert, { fail } from 'assert'
+import asset_holding_fields from './asset_holding_fields'
 import block_fields from './block_fields'
+import global_fields from './global_fields'
 import txn_fields from './txn_fields'
 import txna_fields from './txna_fields'
-import asset_holding_fields from './asset_holding_fields'
 import { get_list, range, enumerate, zip } from './utils'
 
-type TxnFieldName = keyof typeof txn_fields
-type TxnaFieldName = keyof typeof txna_fields
 type AssetHoldingFieldName = keyof typeof asset_holding_fields
 type BlockFieldName = keyof typeof block_fields
+type GlobalFieldName = keyof typeof global_fields
+type TxnFieldName = keyof typeof txn_fields
+type TxnaFieldName = keyof typeof txna_fields
 
 const uint64 = 'uint64'
 const bytearray = '[]byte'
@@ -241,41 +243,30 @@ const isn: Record<string, InstructionDescription> = {
 		availability: 'v1',
 		next: () => [next],
 		exec(ctx, n) {
-			ctx.push({ op: 'ext_const', type: bytearray, name: `args[${n}]` })
+			const index = ctx.add_value({ op: 'const', type: uint64, value: parseInt(n) || n })
+			ctx.push({ op: 'ext_const_array', type: bytearray, origin: 'Arg', name: `args`, consumes: { index } })
 			return ctx.resolve_label(next)
 		}
 	},
 	'arg_0': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx) {
-			ctx.push({ op: 'ext_const', type: bytearray, name: `args[0]` })
-			return ctx.resolve_label(next)
-		}
+		exec: (ctx) => isn['arg']!.exec(ctx, 0)
 	},
 	'arg_1': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx) {
-			ctx.push({ op: 'ext_const', type: bytearray, name: `args[1]` })
-			return ctx.resolve_label(next)
-		}
+		exec: (ctx) => isn['arg']!.exec(ctx, 1)
 	},
 	'arg_2': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx) {
-			ctx.push({ op: 'ext_const', type: bytearray, name: `args[2]` })
-			return ctx.resolve_label(next)
-		}
+		exec: (ctx) => isn['arg']!.exec(ctx, 2)
 	},
 	'arg_3': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx) {
-			ctx.push({ op: 'ext_const', type: bytearray, name: `args[3]` })
-			return ctx.resolve_label(next)
-		}
+		exec: (ctx) => isn['arg']!.exec(ctx, 3)
 	},
 	// Signature: -- []byte
 	'addr': {
@@ -509,7 +500,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx, field: BlockFieldName) {
 			const index = ctx.pop()
 			const { name, type } = block_fields[field]
-			ctx.push({ op: 'ext_const', type, name, consumes: { index } })
+			ctx.push({ op: 'ext_const_array', type, origin: 'Block', name, consumes: { index } })
 			return ctx.resolve_label(next)
 		}
 	},
@@ -574,8 +565,8 @@ const isn: Record<string, InstructionDescription> = {
 	'global': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx, name) {
-			ctx.push({ op: 'ext_const', type: any, name: `global.${name}` })
+		exec(ctx, name: GlobalFieldName) {
+			ctx.push({ op: 'ext_const', type: global_fields[name] || any, origin: 'Global', name })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -583,8 +574,9 @@ const isn: Record<string, InstructionDescription> = {
 	'gtxn': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx, txn, field: TxnFieldName) {
-			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `gtxn[${txn}].${field}` })
+		exec(ctx, txn, name: TxnFieldName) {
+			const index = ctx.add_value({ op: 'const', type: uint64, value: parseInt(txn) || txn })
+			ctx.push({ op: 'ext_const_array', type: txn_fields[name].type || any, origin: 'Gtxn', name, consumes: { index } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -592,36 +584,47 @@ const isn: Record<string, InstructionDescription> = {
 	'txn': {
 		availability: 'v1',
 		next: () => [next],
-		exec(ctx, field: TxnFieldName) {
-			ctx.push({ op: 'ext_const', type: txn_fields[field].type || any, name: `txn.${field}` })
+		exec(ctx, name: TxnFieldName) {
+			ctx.push({ op: 'ext_const', type: txn_fields[name].type || any, origin: 'Txn', name })
 			return ctx.resolve_label(next)
 		},
 	},
 	// Signature: -- any
 	'txna': {
 		next: () => [next],
-		exec(ctx, field: TxnaFieldName, idx) {
-			ctx.push({ op: 'ext_const', type: txna_fields[field].type || any, name: `txn.${field}[${idx}]` })
+		exec(ctx, name: TxnaFieldName, idx) {
+			const index = ctx.add_value({ op: 'const', type: uint64, value: parseInt(idx) || idx })
+			ctx.push({ op: 'ext_const_array', type: txna_fields[name].type || any, origin: 'Txn', name, consumes: { index }})
 			return ctx.resolve_label(next)
 		},
 	},
 	// Signature: uint64 -- any
 	'txnas': {
 		next: () => [next],
-		exec(ctx, field: TxnaFieldName) {
+		exec(ctx, name: TxnaFieldName) {
 			const index = ctx.pop()
-			ctx.push({ op: 'ext_const', consumes: { index }, type: txna_fields[field].type || any, name: `txn.${field}[?]` })
+			ctx.push({ op: 'ext_const_array', type: txna_fields[name].type || any, origin: 'Txn', name, consumes: { index }})
 			return ctx.resolve_label(next)
 		},
 	},
 	// Signature: []byte uint64 -- any
 	'asset_holding_get': {
 		next: (_field) => [next],
-		exec(ctx, field: AssetHoldingFieldName) {
+		exec(ctx, name: AssetHoldingFieldName) {
 			const asset = ctx.pop()
 			const account = ctx.pop()
-			ctx.push({ op: 'ext_const', type: asset_holding_fields[field].type || any, name: `Asset.${field}`, consumes: { account, asset } })
-			ctx.push({ op: 'opted_in', consumes: { account, asset } })
+			ctx.push({ op: 'ext_const_index_index', type: asset_holding_fields[name].type || any, origin: 'Asset', name, consumes: { index: asset, index2: account } })
+			ctx.push({ op: 'ext_const_index_index', type: uint64 || any, origin: 'Asset', name: 'opted_in', consumes: { index: asset, index2: account } })
+			return ctx.resolve_label(next)
+		},
+	},
+	// Signature: uint64 uint64 -- any
+	'app_opted_in': {
+		next: (_field) => [next],
+		exec(ctx) {
+			const application = ctx.pop()
+			const account = ctx.pop()
+			ctx.push({ op: 'ext_const_index_index', type: uint64 || any, origin: 'Application', name: 'opted_in', consumes: { index: application, index2: account } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -704,7 +707,7 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		},
 	},
-	// Signature: uint64 uint64 byte[] -- any
+	// Signature: uint64 uint64 byte[] -- any uint64
 	'app_local_get_ex': {
 		next: () => [next],
 		exec(ctx) {
@@ -712,11 +715,12 @@ const isn: Record<string, InstructionDescription> = {
 			const appid = ctx.pop()
 			const account = ctx.pop()
 			// FIXME: If we know that the appid is not the current app we can improve the representation
-			ctx. push({ op: 'load_external_local', consumes: { key, appid, account }, control: ctx.last_sequence_point })
+			ctx.push({ op: 'load_external_local', consumes: { key, appid, account }, control: ctx.last_sequence_point })
+			ctx.push({ op: 'has_external_local', consumes: { key, appid, account }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		}
 	},
-	// Signature: uint64 byte[] -- any
+	// Signature: uint64 byte[] -- any uint64
 	'app_global_get_ex': {
 		next: () => [next],
 		exec(ctx) {
@@ -724,6 +728,7 @@ const isn: Record<string, InstructionDescription> = {
 			const appid = ctx.pop()
 			// FIXME: If we know that the appid is not the current app we can optimize the representation
 			ctx. push({ op: 'load_external_global', consumes: { key, appid }, control: ctx.last_sequence_point })
+			ctx. push({ op: 'has_external_global', consumes: { key, appid }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		}
 	},

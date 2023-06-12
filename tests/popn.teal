@@ -1,0 +1,17 @@
+#pragma version 8
+
+// # popn
+// https://developer.algorand.org/docs/get-details/dapps/avm/teal/opcodes/#popn-n
+//
+// Opcode: 0x46 {uint8 stack depth}
+// Stack: ..., [N items] → ...
+// remove N values from the top of the stack
+// Availability: v8
+
+int 1
+byte "Value 1"  // [1, "Value 1"]
+int 2           // [1, "Value 1", 2]
+int 3           // [1, "Value 1", 2, 3]
+byte "Value 4"  // [1, "Value 1", 2, 3, "Value 4"]
+popn 4          // [1]
+return          // []

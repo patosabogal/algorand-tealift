@@ -17,9 +17,64 @@ const bytearray = '[]byte'
 const any = 'any'
 const next = ':next'
 
+type HashAlgorithmName = 'sha256' | 'keccak256' | 'sha512_256'
+type BinopName = 'add' | 'sub' | 'div' | 'mul' | 'lt' | 'gt' | 'gt' | 'gt'
+	| 'and' | 'or' | 'eq' | 'ne' | 'mod' | 'bitor' | 'bitand' | 'bitxor'
+	| 'bitnot' | 'bitand' | 'concat'
+	| 'getbyte'
+type Consumes<T extends string> = { consumes: Record<T, AbstractValueID> }
+type TypeName = 'uint64' | '[]byte' | 'any'
+type ConstOriginName = string // FIXME: Use stronger types
+
+export type AbstractValue =
+	| ControlFlowOP
+	| SequencePointOP & { control: AbstractValueID }
+	| { op: 'add_high' } & Consumes<'rhs' | 'lhs'>
+	| { op: 'add_low' } & Consumes<'rhs' | 'lhs'>
+	| { op: 'arg', idx: number }
+	| { op: 'cast', type: TypeName } & Consumes<'value'>
+	| { op: 'const', type: TypeName, value: any }
+	| { op: 'ed25519verify' } & Consumes<'pubkey' | 'signature' | 'data'>
+	| { op: 'ext_const', type: TypeName, origin: ConstOriginName, name: string }
+	| { op: 'ext_const_array', type: TypeName, origin: ConstOriginName, name: string } & Consumes<'index'>
+	| { op: 'ext_const_array_array', type: TypeName, origin: ConstOriginName, name: string } & Consumes<'index' | 'index2'>
+	| { op: 'has_external_global', control: AbstractValueID } & Consumes<"key" | "appid">
+	| { op: 'has_external_local', control: AbstractValueID } & Consumes<"key" | "appid" | "account">
+	| { op: 'hash', algo: HashAlgorithmName } & Consumes<'value'>
+	| { op: 'len' } & Consumes<'value'>
+	| { op: 'load_external_global', control: AbstractValueID } & Consumes<"key" | "appid">
+	| { op: 'load_external_local', control: AbstractValueID } & Consumes<"key" | "appid" | "account">
+	| { op: 'load_global', control: AbstractValueID } & Consumes<"key">
+	| { op: 'load_local', control: AbstractValueID } & Consumes<"key" | "account">
+	| { op: 'load_scratch', key: string, control: AbstractValueID }
+	| { op: 'load_scratch_dynamic', control: AbstractValueID } & Consumes<"key">
+	| { op: 'mul_high' } & Consumes<'rhs' | 'lhs'>
+	| { op: 'mul_low' } & Consumes<'rhs' | 'lhs'>
+	| { op: 'not' } & Consumes<'value'>
+	| { op: 'replace' } & Consumes<'value' | 'index' | 'replacement'>
+	| { op: 'select' } & Consumes<'condition' | 'on_zero' | 'on_nonzero'>
+	| { op: 'setbyte' } & Consumes<'bytes' | 'index' | 'value'>
+	| { op: 'substring' } & Consumes<'word' | 'start' | 'end'>
+	| { op: BinopName, variant: InstructionVariant } & Consumes<'rhs' | 'lhs'>
+type SequencePointOP =
+	| { op: 'assert' } & Consumes<'value'>
+	| { op: 'delete_global' } & Consumes<"key">
+	| { op: 'delete_local' } & Consumes<"key" | "account">
+	| { op: 'log' } & Consumes<'value'>
+	| { op: 'store_global' } & Consumes<"key" | "value">
+	| { op: 'store_local' } & Consumes<"key" | "value" | "account">
+	| { op: 'store_scratch', key: string } & Consumes<"value">
+	| { op: 'store_scratch_dynamic' } & Consumes<"key" | "value">
+type ControlFlowOP =
+	| { op: 'call', control: AbstractValueID, proc_label: string } & Consumes<string>
+	| { op: 'call-result', result_idx: number } & Consumes<"call">
+	| { op: 'exit', label: string, control: AbstractValueID } & Consumes<string>
+	| { op: 'on', control: AbstractValueID, label: string }
+	| { op: 'phi', control: AbstractValueID } & Consumes<string>
+	| { op: 'region', incoming: Set<RegionID>, label: string }
+	| { op: 'switch-on-zero', control: AbstractValueID, consumes: Record<string, AbstractValueID> }
 // FIXME: Use stronger types
 export type Label = string
-export type AbstractValue = any
 export type AbstractValueID = number
 export type RegionID = number
 export type InstructionID = number
@@ -48,7 +103,7 @@ interface AbstractExecutionContext {
 	push(value: AbstractValue): AbstractValueID
 	push_handle(value_hash: AbstractValueID): AbstractValueID
 	pop(): AbstractValueID
-	sequence_point(op: AbstractValue): AbstractValueID
+	sequence_point(op: SequencePointOP): AbstractValueID
 	// NOTE: Should only be used sparingly
 	get_value(value: AbstractValueID): AbstractValue
 	add_value(value: AbstractValue): AbstractValueID
@@ -73,7 +128,7 @@ type NextStepDescription = JumpDescription | ExitDescription | SwitchDescription
 
 type InstructionVariant = 'uint64' | '[]byte' | 'none'
 
-function binop(abstract_op: string, variant='none' as InstructionVariant, availability?: AVMVersion): InstructionDescription {
+function binop(abstract_op: BinopName, variant='none' as InstructionVariant, availability?: AVMVersion): InstructionDescription {
 	if (availability !== undefined) {
 		return {
 			availability,
@@ -98,11 +153,11 @@ function binop(abstract_op: string, variant='none' as InstructionVariant, availa
 	}
 }
 
-function v1_binop(abstract_op: string, variant: InstructionVariant='none'): InstructionDescription {
+function v1_binop(abstract_op: BinopName, variant: InstructionVariant='none'): InstructionDescription {
 	return binop(abstract_op, variant, 'v1')
 }
 
-function v1_hash(algo: string): InstructionDescription {
+function v1_hash(algo: HashAlgorithmName): InstructionDescription {
 	return {
 		availability: 'v1',
 		next: () => [next],
@@ -566,7 +621,7 @@ const isn: Record<string, InstructionDescription> = {
 		availability: 'v1',
 		next: () => [next],
 		exec(ctx, name: GlobalFieldName) {
-			ctx.push({ op: 'ext_const', type: global_fields[name] || any, origin: 'Global', name })
+			ctx.push({ op: 'ext_const', type: global_fields[name].type || any, origin: 'Global', name })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -613,8 +668,8 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx, name: AssetHoldingFieldName) {
 			const asset = ctx.pop()
 			const account = ctx.pop()
-			ctx.push({ op: 'ext_const_index_index', type: asset_holding_fields[name].type || any, origin: 'Asset', name, consumes: { index: asset, index2: account } })
-			ctx.push({ op: 'ext_const_index_index', type: uint64 || any, origin: 'Asset', name: 'opted_in', consumes: { index: asset, index2: account } })
+			ctx.push({ op: 'ext_const_array_array', type: asset_holding_fields[name].type || any, origin: 'Asset', name, consumes: { index: asset, index2: account } })
+			ctx.push({ op: 'ext_const_array_array', type: uint64 || any, origin: 'Asset', name: 'opted_in', consumes: { index: asset, index2: account } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -624,7 +679,7 @@ const isn: Record<string, InstructionDescription> = {
 		exec(ctx) {
 			const application = ctx.pop()
 			const account = ctx.pop()
-			ctx.push({ op: 'ext_const_index_index', type: uint64 || any, origin: 'Application', name: 'opted_in', consumes: { index: application, index2: account } })
+			ctx.push({ op: 'ext_const_array_array', type: uint64 || any, origin: 'Application', name: 'opted_in', consumes: { index: application, index2: account } })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -653,7 +708,7 @@ const isn: Record<string, InstructionDescription> = {
 		next: () => [next],
 		exec(ctx) {
 			const key = ctx.pop()
-			ctx.push({ op: 'load_global', consumes: { key } , control: ctx.last_sequence_point })
+			ctx.push({ op: 'load_global', consumes: { key }, control: ctx.last_sequence_point })
 			return ctx.resolve_label(next)
 		},
 	},
@@ -977,8 +1032,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 					throw new Error('Stack underflow detected outside subprocedure\n' + format_instruction(program[instruction_idx]!))
 				},
 				sequence_point(op) {
-					op.control = last_sequence_point
-					last_sequence_point = this.add_value(op)
+					last_sequence_point = this.add_value({ ...op, control: last_sequence_point })
 					return last_sequence_point
 				},
 				get_value(value_hash) {
@@ -1032,7 +1086,10 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 			/* Add region start */ {
 				const region = regions.get(region_id)
 				if (region !== undefined) {
-					values.get(region).incoming.add(jump_destination.from_value_hash)
+					const region_value = values.get(region)
+					assert(region_value !== undefined && region_value.op == 'region', "Internal error, unable to find value for region_id=" + region_id)
+					assert(jump_destination.from_value_hash !== undefined, "Internal error: Expected jump destination to be defined")
+					region_value.incoming.add(jump_destination.from_value_hash)
 					continue
 				}
 				const incoming = new Set<RegionID>
@@ -1104,7 +1161,11 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 
 		result.status = 'done'
 		/* Calculate number of arguments and results */
-		const return_points = exit_points.filter(v => values.get(v.exit_point)?.label === 'retsub')
+		const return_points = exit_points.filter(v => {
+			const value = values.get(v.exit_point)
+			assert(value !== undefined && value.op === 'exit', "Internal error: Exit point does not have the correct operation")
+			return value.label === 'retsub'
+		})
 		const procedure_first_instruction = program[start_instruction_id]!
 		const procedure_name = procedure_first_instruction.labels[0] || `procedure at ${procedure_first_instruction.filename}:${procedure_first_instruction.linenum}`
 		result.pops = Math.max(...exit_points.map(v => v.popped_arguments))
@@ -1138,7 +1199,7 @@ export const abstract_exec_program = (program: Program, labels: LabelMapping): [
 
 			for (const [phi_hash, value_hash] of zip(phis_hashes, value_hashes)) {
 				const phi_value = values.get(phi_hash)
-				assert(phi_value !== undefined, "ICE: Invalid value hash on phi list")
+				assert(phi_value !== undefined && phi_value.op === 'phi', "ICE: Invalid value hash on phi list")
 				phi_value.consumes[region_id] = value_hash
 			}
 		}

@@ -123,4 +123,4 @@ export default {
     in: 'v6',
     notes: 'The application address of the application that called this application. ZeroAddress if this application is at the top-level. Application mode only.'
   }
-}
+} as const

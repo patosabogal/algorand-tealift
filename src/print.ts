@@ -59,7 +59,8 @@ const build_jsonified_program = (filename: string) => {
 		}
 	}
 
-	type ArgsBuilder = (value: AbstractValue) => any[]
+	// FIXME: Use a stronger type
+	type ArgsBuilder = (value: any) => any[]
 	function default_args() {
 		return []
 	}
@@ -117,10 +118,10 @@ const build_jsonified_program = (filename: string) => {
 
 	function consume_list(value: AbstractValue): (InstructionIndex | PhiIndex)[] {
 		assert(value.op !== 'phi', 'phis should not appear in instruction listings')
-		if (value.consumes === undefined) {
+		if ((value as any).consumes === undefined) {
 			return []
 		}
-		return Object.values(value.consumes as DataDependencies).map(consumed_hash => {
+		return Object.values((value as any).consumes as DataDependencies).map(consumed_hash => {
 			const idx = hash_to_idx.get(consumed_hash)
 			assert(idx !== undefined, 'Internal Error: consumed hash is not a valid instruction')
 			return idx
@@ -153,7 +154,7 @@ const build_jsonified_program = (filename: string) => {
 			const phi_array_idx = ~idx
 			const phi_options: InstructionIndex[] = []
 			basic_block.phis[phi_array_idx] = phi_options
-			for (const [consumed_region_id_str, consumed_value_hash] of Object.entries<number>(value.consumes)) {
+			for (const [consumed_region_id_str, consumed_value_hash] of Object.entries<number>((value as any).consumes)) {
 				const consumed_region_id = parseInt(consumed_region_id_str)
 				const consumed_basic_block_idx = region_id_to_basic_block_idx.get(consumed_region_id)!
 				const predecessor_idx = basic_block.incoming_edges.indexOf(consumed_basic_block_idx)

@@ -1,13 +1,22 @@
 import { Box, Heading, Textarea } from '@chakra-ui/react'
-import { useState } from 'react'
+import { useState, useContext } from 'react'
+import Context from '../context/Context'
+import { type TealContextType } from '../interfaces/interfaces'
 
 const TextInput = (): JSX.Element => {
   const [value, setValue] = useState('')
 
+  const { setTealContext } = useContext(Context) as TealContextType
+
   const handleInputChange = (e: any): void => {
     const inputValue = e.target.value
+    const teal = {
+      tealCode: inputValue,
+      graph: ''
+    }
+    setTealContext(teal)
     setValue(inputValue)
-    console.log(inputValue)
+    // console.log(inputValue)
   }
 
   return (

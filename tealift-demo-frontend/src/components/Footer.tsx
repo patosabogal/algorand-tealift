@@ -1,10 +1,17 @@
-import { Box, Heading } from '@chakra-ui/react'
+import { Box, Heading, Highlight } from '@chakra-ui/react'
 
 const Footer = (): JSX.Element => {
   return (
-    <Box marginTop={20} marginBottom={10} textAlign='center' >
-        <Heading as='h4' size='md'>Algorand & Coinfabrik</Heading>
-    </Box>
+    <Box marginTop={20} marginBottom={5} textAlign='center' >
+    <Heading lineHeight='tall' size='sm'>
+      <Highlight
+        query='Coinfabrik'
+        styles={{ px: '2', py: '1', rounded: 'full', bg: 'blue.100' }}
+      >
+        done with ❤️ by Coinfabrik
+      </Highlight>
+    </Heading>
+  </Box>
   )
 }
 

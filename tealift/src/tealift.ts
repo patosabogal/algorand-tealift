@@ -338,7 +338,8 @@ const isn: Record<string, InstructionDescription> = {
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
-			const condition_value = ctx.get_value(condition);
+			// FIXME
+			//const condition_value = ctx.get_value(condition);
 			return {
 				kind: 'switch',
 				consumes: { condition },

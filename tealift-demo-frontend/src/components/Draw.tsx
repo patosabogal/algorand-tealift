@@ -6,7 +6,7 @@ import { type TealContextType } from '../interfaces/interfaces'
 
 const Draw = (): JSX.Element => {
   const { tealContext } = useContext(Context) as TealContextType
-  const [graph, setGraph] = useState<string>()
+  const [graphURL, setGraphURL] = useState<string>('/vite.svg')
   const graphviz_load = Graphviz.load()
 
   useEffect(() => {
@@ -15,8 +15,11 @@ const Draw = (): JSX.Element => {
 
   async function draw (): Promise<void> {
     const graphviz = await graphviz_load
-    const htmlString = graphviz.layout(tealContext.graph, 'svg', 'dot')
-    setGraph(htmlString)
+    const svgString = graphviz.layout(tealContext.graph, 'svg', 'dot')
+    // FIXME: Release URL
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml" })
+    const blobURL = URL.createObjectURL(svgBlob)
+    setGraphURL(blobURL)
   }
 
   return (
@@ -29,7 +32,9 @@ const Draw = (): JSX.Element => {
         <TabPanels>
             <TabPanel marginLeft='25%'>
             <Text fontSize={20}>
-              <div dangerouslySetInnerHTML={{ __html: graph as string }}></div>
+              <a href={graphURL} download="tealift-graph.svg">
+                <img src={graphURL}/>
+              </a>
             </Text>
             </TabPanel>
             <TabPanel>

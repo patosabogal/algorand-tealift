@@ -7,21 +7,15 @@ import { type TealContextType } from '../interfaces/interfaces'
 const Draw = (): JSX.Element => {
   const { tealContext } = useContext(Context) as TealContextType
   const [graph, setGraph] = useState<string>()
+  const graphviz_load = Graphviz.load()
 
   useEffect(() => {
     void draw()
   }, [tealContext])
 
   async function draw (): Promise<void> {
-    const graphviz = await Graphviz.load()
-    // Acá va asignado al dot el valor del tealContext graph
-    const dot = `digraph Blah {
-      rankdir="LR"
-      node [shape="box"];
-      A -> B -> C;
-      B -> D;
-    }`
-    const htmlString = graphviz.layout(dot, 'svg', 'dot')
+    const graphviz = await graphviz_load
+    const htmlString = graphviz.layout(tealContext.graph, 'svg', 'dot')
     setGraph(htmlString)
   }
 

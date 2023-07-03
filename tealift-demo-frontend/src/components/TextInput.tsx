@@ -2,6 +2,20 @@ import { Box, Heading, Textarea } from '@chakra-ui/react'
 import { useState, useContext } from 'react'
 import Context from '../context/Context'
 import { type TealContextType } from '../interfaces/interfaces'
+import { draw_ssa } from 'tealift'
+
+const try_draw_ssa = (new_contents: string): string | undefined => {
+  try {
+    return draw_ssa(new_contents, '-', {
+      blocks: true,
+      phi_labels: true,
+      direction: 'LR'
+    })
+  } catch (e) {
+    console.error(e)
+    return undefined
+  }
+}
 
 const TextInput = (): JSX.Element => {
   const [value, setValue] = useState('')
@@ -10,11 +24,16 @@ const TextInput = (): JSX.Element => {
 
   const handleInputChange = (e: any): void => {
     const inputValue = e.target.value
-    const teal = {
-      tealCode: inputValue,
-      graph: ''
+    const graph = try_draw_ssa(inputValue)
+    console.log(graph)
+    if (graph !== undefined) {
+      const teal = {
+        tealCode: inputValue,
+        // FIXME: Debounce
+        graph
+      }
+      setTealContext(teal)
     }
-    setTealContext(teal)
     setValue(inputValue)
     // console.log(inputValue)
   }

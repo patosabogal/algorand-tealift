@@ -1,6 +1,7 @@
 export interface Teal {
   tealCode: string
   graph: string
+  errorLog: string
 }
 
 export interface TealContextType {

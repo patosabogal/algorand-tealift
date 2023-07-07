@@ -1,38 +1,46 @@
-import { Box, Heading, Textarea } from '@chakra-ui/react'
+/* eslint-disable react/no-children-prop */
+import { Box, Code, Heading, Textarea } from '@chakra-ui/react'
 import { useState, useContext } from 'react'
 import Context from '../context/Context'
 import { type TealContextType } from '../interfaces/interfaces'
 import { draw_ssa } from 'tealift'
 
-const try_draw_ssa = (new_contents: string): string | undefined => {
-  try {
-    return draw_ssa(new_contents, '-', {
-      blocks: true,
-      phi_labels: true,
-      direction: 'LR'
-    })
-  } catch (e) {
-    console.error(e)
-    return undefined
-  }
-}
-
 const TextInput = (): JSX.Element => {
   const [value, setValue] = useState('')
-
+  const [error, setError] = useState<string>('')
   const { setTealContext } = useContext(Context) as TealContextType
 
-  const handleInputChange = (e: any): void => {
+  const tryDraw = (newContents: string): string | undefined => {
+    try {
+      return (setError(''), draw_ssa(
+        newContents, '-', {
+          blocks: true,
+          phi_labels: true,
+          direction: 'LR'
+        }))
+    } catch (error) {
+      if (error instanceof Error) {
+        console.log(error.message)
+        setError(error.message)
+      } else {
+        console.log('Unexpected error', error)
+      }
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const inputValue = e.target.value
-    const graph = try_draw_ssa(inputValue)
-    console.log(graph)
+    const graph = tryDraw(inputValue)
+    // console.log(graph)
     if (graph !== undefined) {
       const teal = {
         tealCode: inputValue,
         // FIXME: Debounce
-        graph
+        graph,
+        errorLog: error
       }
       setTealContext(teal)
+      // console.log(tealContext.graph)
     }
     setValue(inputValue)
     // console.log(inputValue)
@@ -47,11 +55,17 @@ const TextInput = (): JSX.Element => {
             fontWeight='semibold'
             borderRadius={16}
             value={value}
-            onChange={handleInputChange}
-            placeholder='#pragma version 1'
-            height={400}
+            defaultValue={value}
+            onChange={(e) => { handleInputChange(e) }}
+            placeholder={'#pragma version 1\n\nint 1\nreturn'}
+            height={300}
             size='lg'
         />
+        {
+          error === ''
+            ? <></>
+            : <Code borderRadius={10} margin={5} colorScheme='red' maxWidth='90%' padding={1} children={error} />
+        }
      </Box>
   )
 }

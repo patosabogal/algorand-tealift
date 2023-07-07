@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function TealContextProvider ({ children }: Props): JSX.Element {
-  const [tealContext, setTealContext] = useState<Teal>({ graph: '', tealCode: '' })
+  const [tealContext, setTealContext] = useState<Teal>({ graph: '', tealCode: '', errorLog: '' })
   return (
         <Context.Provider value={{ tealContext, setTealContext }}>
             {children}

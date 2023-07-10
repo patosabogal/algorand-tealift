@@ -39,10 +39,10 @@ const Draw = (): JSX.Element => {
             <Tab fontWeight='bold'>Graph Code</Tab>
         </TabList>
         <TabPanels>
-            <TabPanel marginLeft='25%'>
+            <TabPanel>
             <Text fontSize={20}>
                 <img src={graphURL}/>
-                <Button marginLeft='-30%' colorScheme='blue' variant='outline'>
+                <Button marginLeft='auto' marginRight='auto' marginTop={5} colorScheme='blue' variant='outline'>
                   <a href={graphURL} download="tealift-graph.svg">
                     Download graph
                   </a>

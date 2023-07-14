@@ -2,7 +2,7 @@ import { Box, Heading, Highlight } from '@chakra-ui/react'
 
 const Footer = (): JSX.Element => {
   return (
-    <Box marginTop={'7%'} marginBottom={4} textAlign='center'>
+    <Box marginTop={0} marginBottom={0} flex={1} bottom={0} textAlign='center'>
     <Heading lineHeight='tall' size='sm'>
       <Highlight
         query='Coinfabrik'

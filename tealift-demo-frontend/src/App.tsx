@@ -8,7 +8,7 @@ const App = (): JSX.Element => {
   return (
     <TealContextProvider>
       <Box>
-        <Box margin={4} textAlign='center'>
+        <Box margin={4} marginBottom={0} textAlign='center'>
           <Heading>Tealift 🚀</Heading>
             <Text fontSize='xl'>
               Translate your code

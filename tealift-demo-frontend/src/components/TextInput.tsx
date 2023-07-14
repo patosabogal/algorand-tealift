@@ -58,7 +58,7 @@ const TextInput = (): JSX.Element => {
             defaultValue={value}
             onChange={(e) => { handleInputChange(e) }}
             placeholder={'#pragma version 1\n\nint 1\nreturn'}
-            height={300}
+            height={400}
             size='lg'
         />
         {

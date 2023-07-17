@@ -1,4 +1,4 @@
-import assert, { fail } from 'assert'
+import assert, { fail } from './assert'
 import txn_fields from './txn_fields'
 import txna_fields from './txna_fields'
 import asset_holding_fields from './asset_holding_fields'
@@ -338,7 +338,8 @@ const isn: Record<string, InstructionDescription> = {
 		next: (label) => [label, next],
 		exec(ctx, label) {
 			const condition = ctx.pop()
-			const condition_value = ctx.get_value(condition);
+			// FIXME
+			//const condition_value = ctx.get_value(condition);
 			return {
 				kind: 'switch',
 				consumes: { condition },
@@ -875,9 +876,7 @@ export const get_list = <K, V>(map: Map<K, V[]>, key: K): V[] => {
 	return result
 }
 
-export const process_file = (filename: string): [Program, LabelMapping] => {
-	const { readFileSync } = require('fs')
-	const contents = readFileSync(filename, 'utf8')
+export const process_contents = (contents: string, filename: string): [Program, LabelMapping] => {
 	const program = parse(filename, contents)
 	const labels = gather_labels(program)
 	return [program, labels]

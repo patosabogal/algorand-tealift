@@ -56,7 +56,7 @@ export function format_jsonified_program(program: JSONifiedProgram): string {
 }
 
 
-if (require.main === module) {
+if (!('window' in globalThis) && require.main === module) {
     const file = process.argv[2]
     if (file === undefined) {
         console.log('Usage:', process.argv[0], process.argv[1], '<jsonified-program>')

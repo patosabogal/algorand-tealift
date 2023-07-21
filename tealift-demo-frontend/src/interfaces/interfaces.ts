@@ -18,6 +18,7 @@ export interface GraphState {
 
 export interface ModalProps {
   image: string
+  downloadUrl: string
 }
 
 export interface AccorditionProps {

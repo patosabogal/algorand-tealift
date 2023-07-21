@@ -124,7 +124,7 @@ const Draw = (): JSX.Element => {
         </TabList>
         <TabPanels>
           <TabPanel>
-            <ModalButton image={graphURL} />
+            <ModalButton image={graphURL} downloadUrl={graphURL} />
             <Text fontSize={20}>
               {
                 tealContext.graph === ''

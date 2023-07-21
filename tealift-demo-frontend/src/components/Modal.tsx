@@ -5,7 +5,7 @@ import {
 import { type ModalProps } from '../interfaces/interfaces'
 import { MdExpand } from 'react-icons/md'
 
-const ModalButton = ({ image }: ModalProps): JSX.Element => {
+const ModalButton = ({ image, downloadUrl }: ModalProps): JSX.Element => {
   const { isOpen, onOpen, onClose } = useDisclosure()
   return (
       <>
@@ -23,6 +23,11 @@ const ModalButton = ({ image }: ModalProps): JSX.Element => {
             <ModalFooter>
               <Button colorScheme='blue' mr={3} onClick={onClose}>
                 Close
+              </Button>
+              <Button variant='ghost'>
+                <a href={downloadUrl} download="tealift-graph.svg">
+                  Download graph
+                </a>
               </Button>
             </ModalFooter>
           </ModalContent>

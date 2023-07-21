@@ -2,7 +2,7 @@
   "name": "tealift",
   "version": "0.0.1",
   "description": "A toolkit for analyzing TEAL programs",
-  "main": "tealift.ts",
+  "main": "src/exports.ts",
   "directories": {
     "test": "tests"
   },

@@ -2,5 +2,7 @@
   "extends": "@tsconfig/node18-strictest/tsconfig.json",
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/*.spec.ts"],
-  "sourceMap": true,
+  "compilerOptions": {
+    "sourceMap": true
+  }
 }

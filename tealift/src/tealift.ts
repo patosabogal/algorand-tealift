@@ -1,4 +1,4 @@
-import assert, { fail } from 'assert'
+import assert, { fail } from './assert'
 import asset_holding_fields from './asset_holding_fields'
 import block_fields from './block_fields'
 import global_fields from './global_fields'
@@ -18,7 +18,7 @@ const any = 'any'
 const next = ':next'
 
 type HashAlgorithmName = 'sha256' | 'keccak256' | 'sha512_256'
-type BinopName = 'add' | 'sub' | 'div' | 'mul' | 'lt' | 'gt' | 'gt' | 'gt'
+type BinopName = 'add' | 'sub' | 'div' | 'mul' | 'lt' | 'gt' | 'le' | 'ge'
 	| 'and' | 'or' | 'eq' | 'ne' | 'mod' | 'bitor' | 'bitand' | 'bitxor'
 	| 'bitnot' | 'bitand' | 'concat'
 	| 'getbyte'
@@ -26,6 +26,7 @@ type Consumes<T extends string> = { consumes: Record<T, AbstractValueID> }
 type TypeName = 'uint64' | '[]byte' | 'any'
 type ConstOriginName = string // FIXME: Use stronger types
 
+export type OpName = AbstractValue["op"]
 export type AbstractValue =
 	| ControlFlowOP
 	| SequencePointOP & { control: AbstractValueID }
@@ -922,9 +923,7 @@ const gather_labels = (program: Program): LabelMapping => {
 	return labels
 }
 
-export const process_file = (filename: string): [Program, LabelMapping] => {
-	const { readFileSync } = require('fs')
-	const contents = readFileSync(filename, 'utf8')
+export const process_contents = (contents: string, filename: string): [Program, LabelMapping] => {
 	const program = parse(filename, contents)
 	const labels = gather_labels(program)
 	return [program, labels]

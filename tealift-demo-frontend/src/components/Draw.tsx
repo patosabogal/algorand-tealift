@@ -7,7 +7,7 @@ import {
   TabPanels,
   TabPanel,
   Text,
-  Code,
+  // Code,
   Button,
   Stack,
   Image
@@ -20,6 +20,8 @@ import { type TealContextType } from '../interfaces/interfaces'
 import defaultImage from '../assets/tealift.svg'
 import 'd3-graphviz'
 import * as d3 from 'd3'
+import ModalButton from './Modal'
+import AccordionGraphCode from './Accordion'
 
 // FIX TYPES
 const doGraph = (graph: any): void => {
@@ -31,7 +33,7 @@ const doGraph = (graph: any): void => {
         .delay(100)
         .duration(500)
     })
-    .logEvents(true)
+    .logEvents(false)
     .on('initEnd', render)
 
   const attributer = (datum: any): void => {
@@ -81,6 +83,8 @@ const Draw = (): JSX.Element => {
   const [graphURL, setGraphURL] = useState<string>(defaultImage)
   const graphvizLoad = Graphviz.load()
   const [copied, setCopied] = useState<boolean>(false)
+  const [nodes, setNodes] = useState<string[]>([])
+  const [content, setContent] = useState<string[]>([])
 
   useEffect(() => {
     void draw()
@@ -89,6 +93,21 @@ const Draw = (): JSX.Element => {
 
   async function draw (): Promise<void> {
     if (tealContext.graph === '') setGraphURL(defaultImage)
+    const arrayGraph = tealContext.graph.match(/.{1,100}/g)
+    const arrayNodes = []
+    const arrayContent = []
+    if (arrayGraph != null) {
+      for (let i = 5; i < arrayGraph.length; i++) {
+        if (arrayGraph[i].includes('node')) {
+          arrayNodes.push(arrayGraph[i].slice(0, 8).split('"').join(''))
+        }
+        if (arrayGraph[i].includes('[')) {
+          arrayContent.push(arrayGraph[i].split('"').join(''))
+        }
+      }
+    }
+    setContent(arrayContent)
+    setNodes(arrayNodes)
     const graphviz = await graphvizLoad
     const svgString = graphviz.layout(tealContext.graph, 'svg', 'dot')
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml' })
@@ -97,7 +116,7 @@ const Draw = (): JSX.Element => {
   }
 
   return (
-    <Box width="60%" marginTop={20} marginBottom={10} textAlign="center">
+    <Box width="60%" marginTop={20} marginBottom={0} textAlign="center">
       <Tabs isFitted variant="enclosed">
         <TabList mb="1em">
           <Tab fontWeight="bold">Draw</Tab>
@@ -105,10 +124,11 @@ const Draw = (): JSX.Element => {
         </TabList>
         <TabPanels>
           <TabPanel>
+            <ModalButton image={graphURL} />
             <Text fontSize={20}>
               {
                 tealContext.graph === ''
-                  ? <Image ml='auto' mr='auto' h={350} src={defaultImage} alt="graph" />
+                  ? <Image ml='auto' mr='auto' h={300} src={defaultImage} alt="graph" />
                   : <></>
               }
               <div id="graph" />
@@ -132,12 +152,13 @@ const Draw = (): JSX.Element => {
                 )
               : (
                 <Stack alignItems='center'>
-                  <Code
+                  {/* <Code
                     borderRadius={10}
                     maxWidth="70%"
                     padding={5}
                     children={`${tealContext.graph.slice(0, 750)}...`}
-                  />
+                  /> */}
+                  <AccordionGraphCode nodeArray={nodes} contentArray={content} />
                   <Button
                     leftIcon={<MdCopyAll />}
                     alignItems='center' w={40}

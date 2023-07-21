@@ -1,5 +1,5 @@
 import { AbstractValue, AbstractValueID, OpName, abstract_exec_program, process_contents } from "./tealift"
-import assert from "assert"
+import assert from "./assert"
 
 export type DrawSSAOptions = {
 	blocks?: boolean

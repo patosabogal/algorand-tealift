@@ -7,112 +7,126 @@ import {
   TabPanels,
   TabPanel,
   Text,
-  // Code,
   Button,
   Stack,
-  Image
+  Flex,
 } from '@chakra-ui/react'
-import { MdCopyAll } from 'react-icons/md'
-import { Graphviz } from '@hpcc-js/wasm/graphviz'
-import { useEffect, useContext, useState } from 'react'
+import { MdCopyAll, MdFullscreen } from 'react-icons/md'
+import { useEffect, useContext, useState, useRef, RefObject } from 'react'
 import Context from '../context/Context'
 import { type TealContextType } from '../interfaces/interfaces'
-import defaultImage from '../assets/tealift.svg'
 import 'd3-graphviz'
 import * as d3 from 'd3'
-import ModalButton from './Modal'
 import AccordionGraphCode from './Accordion'
+import './Draw.css'
 
-// FIX TYPES
-const doGraph = (graph: any): void => {
-  let dotIndex = 0
-  const graphviz = d3.select('#graph').graphviz()
-    .transition(function (): any {
-      return d3.transition()
-        .ease(d3.easeLinear)
-        .delay(100)
-        .duration(500)
-    })
-    .logEvents(false)
-    .on('initEnd', render)
+function graphAttributer(this: d3.BaseType, datum: any): void {
+  const selection = d3.select(this)
+  if (datum.tag === 'svg') {
+    const width = '600'
+    const height = '260'
+    const x = '10'
+    const y = '10'
+    selection
+      .attr('width', width + 'pt')
+      .attr('height', height + 'pt')
+    // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+      .attr('viewBox', -x + ' ' + -y + ' ' + width + ' ' + height)
+    datum.attributes.width = width + 'pt'
+    datum.attributes.height = height + 'pt'
+    // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+    datum.attributes.viewBox = -x + ' ' + -y + ' ' + width + ' ' + height
+  }
+}
 
-  const attributer = (datum: any): void => {
-    const selection = d3.select(this as any)
-    if (datum.tag === 'svg') {
-      const width = '600'
-      const height = '260'
-      const x = '10'
-      const y = '10'
-      selection
-        .attr('width', width + 'pt')
-        .attr('height', height + 'pt')
-      // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-        .attr('viewBox', -x + ' ' + -y + ' ' + width + ' ' + height)
-      datum.attributes.width = width + 'pt'
-      datum.attributes.height = height + 'pt'
-      // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
-      datum.attributes.viewBox = -x + ' ' + -y + ' ' + width + ' ' + height
+const updateTransition = () =>
+  d3.transition()
+    .ease(d3.easeLinear)
+    .delay(100)
+    .duration(500)
+
+function useGraph<T extends HTMLElement>(ctx: TealContextType): RefObject<T> {
+  const graphRef = useRef<T>(null)
+  const graph = ctx.tealContext.graph
+
+  // Initialize the graph
+  useEffect(() => {
+    if (graphRef.current === null) {
+      // Component is not yet mounted
+      return
     }
-  }
 
-  function render (): void {
-    const dotLines = dots[dotIndex % dots.length]
-    const dot = dotLines.join('')
-    graphviz
+    d3.select(graphRef.current)
+      .graphviz()
+      .transition(updateTransition as any /* FIXME */)
+      .keyMode('id')
+      .logEvents(false)
+      .fit(true)
+  }, [graphRef.current])
+
+  // Draw
+  useEffect(() => {
+    if (graphRef.current === null) {
+      // Component is not yet mounted
+      return
+    }
+
+    if (graph === '') {
+      // There's nothing to draw
+      return
+    }
+
+    d3.select(graphRef.current)
+      .graphviz()
       .tweenShapes(false)
-      .dot(dot)
-      .attributer(attributer)
+      .dot(graph)
+      .attributer(graphAttributer)
       .render()
-      .on('end', function () {
-        if (dotIndex !== 0) {
-          render()
-        }
-      })
-    dotIndex += 1
-  }
+  }, [graphRef.current, graph])
 
-  const dots = [
-    [
-      graph
-    ]
-  ]
+  return graphRef
 }
 
 const Draw = (): JSX.Element => {
-  const { tealContext } = useContext(Context) as TealContextType
-  const [graphURL, setGraphURL] = useState<string>(defaultImage)
-  const graphvizLoad = Graphviz.load()
+  const tealContext = useContext<TealContextType>(Context)
   const [copied, setCopied] = useState<boolean>(false)
-  const [nodes, setNodes] = useState<string[]>([])
-  const [content, setContent] = useState<string[]>([])
 
-  useEffect(() => {
-    void draw()
-    doGraph(tealContext.graph)
-  }, [tealContext])
+  const graph = tealContext.tealContext.graph
+  const graphRef = useGraph<HTMLDivElement>(tealContext)
+  const tabRef = useRef<HTMLDivElement>(null)
 
-  async function draw (): Promise<void> {
-    if (tealContext.graph === '') setGraphURL(defaultImage)
-    const arrayGraph = tealContext.graph.match(/.{1,100}/g)
-    const arrayNodes = []
-    const arrayContent = []
-    if (arrayGraph != null) {
-      for (let i = 5; i < arrayGraph.length; i++) {
-        if (arrayGraph[i].includes('node')) {
-          arrayNodes.push(arrayGraph[i].slice(0, 8).split('"').join(''))
-        }
-        if (arrayGraph[i].includes('[')) {
-          arrayContent.push(arrayGraph[i].split('"').join(''))
-        }
-      }
+  function downloadGraph() {
+    if (graphRef.current === null) {
+      // Component is not yet mounted
+      return
     }
-    setContent(arrayContent)
-    setNodes(arrayNodes)
-    const graphviz = await graphvizLoad
-    const svgString = graphviz.layout(tealContext.graph, 'svg', 'dot')
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml' })
+
+    const svg = graphRef.current.innerHTML
+    const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
     const blobURL = URL.createObjectURL(svgBlob)
-    setGraphURL(blobURL)
+    const fakeLink = document.createElement('a')
+    fakeLink.href = blobURL
+    fakeLink.download = "tealift-graph.svg"
+    fakeLink.click()
+    URL.revokeObjectURL(blobURL)
+  }
+
+  function copyToClipboard() {
+    void navigator.clipboard.writeText(graph)
+    setCopied(true)
+  }
+
+  function fullscreenGraph() {
+    if (tabRef.current === null) {
+      // Component is not yet mounted
+      return
+    }
+
+    if (document.fullscreenElement === tabRef.current) {
+      document.exitFullscreen()
+    } else {
+      tabRef.current.requestFullscreen()
+    }
   }
 
   return (
@@ -123,56 +137,48 @@ const Draw = (): JSX.Element => {
           <Tab fontWeight="bold">Graph Code</Tab>
         </TabList>
         <TabPanels>
-          <TabPanel>
-            <ModalButton image={graphURL} downloadUrl={graphURL} />
-            <Text fontSize={20}>
-              {
-                tealContext.graph === ''
-                  ? <Image ml='auto' mr='auto' h={300} src={defaultImage} alt="graph" />
-                  : <></>
-              }
-              <div id="graph" />
-              <Button
-                marginLeft="auto"
-                marginRight="auto"
-                marginTop={5}
-                colorScheme="blue"
-                variant="outline"
-              >
-                <a href={graphURL} download="tealift-graph.svg">
+          <TabPanel className="graph-container" ref={tabRef}>
+            <Flex direction="column" height="100%">
+              <Box flex="1" ref={graphRef} />
+              <Text display="block" fontSize={20}>
+                <Button
+                  marginLeft="auto"
+                  marginRight="auto"
+                  marginTop={5}
+                  colorScheme="blue"
+                  variant="outline"
+                  onClick={downloadGraph}
+                >
                   Download graph
-                </a>
-              </Button>
-            </Text>
+                </Button>
+                <Button
+                  marginLeft="auto"
+                  marginRight="auto"
+                  marginTop={5}
+                  colorScheme='blue'
+                  variant='outline'
+                  leftIcon={<MdFullscreen/>}
+                  onClick={fullscreenGraph}
+                >
+                  Toggle fullscreen
+                </Button>
+              </Text>
+            </Flex>
           </TabPanel>
           <TabPanel>
-            {tealContext.graph === ''
-              ? (
-              <Text fontSize={20}>No graph to print</Text>
-                )
+            {graph === ''
+              ? <Text fontSize={20}>No graph to print</Text>
               : (
                 <Stack alignItems='center'>
-                  {/* <Code
-                    borderRadius={10}
-                    maxWidth="70%"
-                    padding={5}
-                    children={`${tealContext.graph.slice(0, 750)}...`}
-                  /> */}
-                  <AccordionGraphCode nodeArray={nodes} contentArray={content} />
+                  <AccordionGraphCode dotGraph={graph} />
                   <Button
                     leftIcon={<MdCopyAll />}
                     alignItems='center' w={40}
                     colorScheme='blue'
                     variant='ghost'
-                    onClick={() => {
-                      void navigator.clipboard.writeText(tealContext.graph)
-                      setCopied(true)
-                    }
-                    }
+                    onClick={copyToClipboard}
                   >
-                    {
-                      copied ? 'Copied!' : 'Copy Graph'
-                    }
+                    {copied ? 'Copied!' : 'Copy Graph'}
                   </Button>
                 </Stack>
                 )}

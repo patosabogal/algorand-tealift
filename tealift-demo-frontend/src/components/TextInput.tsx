@@ -1,37 +1,39 @@
 /* eslint-disable react/no-children-prop */
 import { Box, Code, Heading, Textarea } from '@chakra-ui/react'
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
 import Context from '../context/Context'
-import { type TealContextType } from '../interfaces/interfaces'
 import { draw_ssa } from 'tealift'
 
+const PLACEHOLDER_PROGRAM = '#pragma version 1\n\nint 1\nreturn'
+
 const TextInput = (): JSX.Element => {
-  const [value, setValue] = useState('')
-  const [error, setError] = useState<string>('')
-  const { setTealContext } = useContext(Context) as TealContextType
+  const [value, setValue] = useState(PLACEHOLDER_PROGRAM)
+  const [error, setError] = useState('')
+  const { setTealContext } = useContext(Context)
 
   const tryDraw = (newContents: string): string | undefined => {
+    setError('')
     try {
-      return (setError(''), draw_ssa(
-        newContents, '-', {
+      return draw_ssa(
+        newContents,
+        '-',
+        {
           blocks: true,
           phi_labels: true,
           direction: 'LR'
-        }))
+        }
+      )
     } catch (error) {
-      if (error instanceof Error) {
-        console.log(error.message)
-        setError(error.message)
-      } else {
-        console.log('Unexpected error', error)
-      }
+      console.error(error)
+      const message = error instanceof Error
+        ? error.message
+        : String(error)
+      setError(message)
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    const inputValue = e.target.value
+  const handleInputChange = (inputValue: string): void => {
     const graph = tryDraw(inputValue)
-    // console.log(graph)
     if (graph !== undefined) {
       const teal = {
         tealCode: inputValue,
@@ -40,11 +42,14 @@ const TextInput = (): JSX.Element => {
         errorLog: error
       }
       setTealContext(teal)
-      // console.log(tealContext.graph)
     }
-    setValue(inputValue)
-    // console.log(inputValue)
   }
+
+  // Initialization
+  useEffect(() => {
+    handleInputChange(value)
+  }, [value])
+
 
   return (
     <Box margin={4} marginTop={20} textAlign='center' width="40%">
@@ -55,9 +60,8 @@ const TextInput = (): JSX.Element => {
             fontWeight='semibold'
             borderRadius={16}
             value={value}
-            defaultValue={value}
-            onChange={(e) => { handleInputChange(e) }}
-            placeholder={'#pragma version 1\n\nint 1\nreturn'}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={PLACEHOLDER_PROGRAM}
             height={400}
             size='lg'
         />

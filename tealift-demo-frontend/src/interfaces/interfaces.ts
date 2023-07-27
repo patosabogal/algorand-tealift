@@ -22,6 +22,5 @@ export interface ModalProps {
 }
 
 export interface AccorditionProps {
-  nodeArray: string[]
-  contentArray: string[]
+  dotGraph: string
 }

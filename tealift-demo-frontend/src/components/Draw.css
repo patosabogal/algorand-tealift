@@ -1,0 +1,10 @@
+.graph-container svg {
+    margin: auto;
+    width: max-content;
+    height: 100%;
+}
+
+.graph-container {
+    background-color: white;
+    height: 100%;
+}

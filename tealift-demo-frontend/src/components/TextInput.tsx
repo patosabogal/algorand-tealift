@@ -50,7 +50,6 @@ const TextInput = (): JSX.Element => {
     handleInputChange(value)
   }, [value])
 
-
   return (
     <Box margin={4} marginTop={20} textAlign='center' width="40%">
         <Heading as='h4' size='md'>Teal Input</Heading>
@@ -60,7 +59,7 @@ const TextInput = (): JSX.Element => {
             fontWeight='semibold'
             borderRadius={16}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => { setValue(e.target.value) }}
             placeholder={PLACEHOLDER_PROGRAM}
             height={400}
             size='lg'

@@ -9,18 +9,19 @@ import {
   Text,
   Button,
   Stack,
-  Flex,
+  Flex
 } from '@chakra-ui/react'
 import { MdCopyAll, MdFullscreen } from 'react-icons/md'
-import { useEffect, useContext, useState, useRef, RefObject } from 'react'
+import { useEffect, useContext, useState, useRef, type RefObject } from 'react'
 import Context from '../context/Context'
 import { type TealContextType } from '../interfaces/interfaces'
 import 'd3-graphviz'
 import * as d3 from 'd3'
 import AccordionGraphCode from './Accordion'
 import './Draw.css'
+import { build_jsonified_program, format_jsonified_program } from 'tealift'
 
-function graphAttributer(this: d3.BaseType, datum: any): void {
+function graphAttributer (this: d3.BaseType, datum: any): void {
   const selection = d3.select(this)
   if (datum.tag === 'svg') {
     const width = '600'
@@ -45,7 +46,7 @@ const updateTransition = () =>
     .delay(100)
     .duration(500)
 
-function useGraph<T extends HTMLElement>(ctx: TealContextType): RefObject<T> {
+function useGraph<T extends HTMLElement> (ctx: TealContextType): RefObject<T> {
   const graphRef = useRef<T>(null)
   const graph = ctx.tealContext.graph
 
@@ -66,6 +67,22 @@ function useGraph<T extends HTMLElement>(ctx: TealContextType): RefObject<T> {
 
   // Draw
   useEffect(() => {
+    if (require.main === module) {
+      const file = process.argv[2]
+      if (file === undefined) {
+        console.log('Usage:', process.argv[0], process.argv[1], '<teal-file>')
+        process.exit(1)
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
+      const contents = readFileSync(file, 'utf8')
+
+      const program = build_jsonified_program(contents, file)
+      console.log(format_jsonified_program(program))
+
+      console.log(JSON.stringify(program, null, 2))
+    }
+
     if (graphRef.current === null) {
       // Component is not yet mounted
       return
@@ -95,7 +112,7 @@ const Draw = (): JSX.Element => {
   const graphRef = useGraph<HTMLDivElement>(tealContext)
   const tabRef = useRef<HTMLDivElement>(null)
 
-  function downloadGraph() {
+  function downloadGraph () {
     if (graphRef.current === null) {
       // Component is not yet mounted
       return
@@ -106,17 +123,17 @@ const Draw = (): JSX.Element => {
     const blobURL = URL.createObjectURL(svgBlob)
     const fakeLink = document.createElement('a')
     fakeLink.href = blobURL
-    fakeLink.download = "tealift-graph.svg"
+    fakeLink.download = 'tealift-graph.svg'
     fakeLink.click()
     URL.revokeObjectURL(blobURL)
   }
 
-  function copyToClipboard() {
+  function copyToClipboard () {
     void navigator.clipboard.writeText(graph)
     setCopied(true)
   }
 
-  function fullscreenGraph() {
+  function fullscreenGraph () {
     if (tabRef.current === null) {
       // Component is not yet mounted
       return
@@ -190,3 +207,6 @@ const Draw = (): JSX.Element => {
 }
 
 export default Draw
+function readFileSync (file: string, arg1: string) {
+  throw new Error('Function not implemented.')
+}

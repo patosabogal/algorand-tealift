@@ -636,6 +636,16 @@ const isn: Record<string, InstructionDescription> = {
 			return ctx.resolve_label(next)
 		},
 	},
+	'gtxna': {
+		availability: 'v1',
+		next: () => [next],
+		exec(ctx, txn, name: TxnaFieldName, idx) {
+			const index = ctx.add_value({ op: 'const', type: uint64, value: parseInt(txn) || txn })
+			const index2 = ctx.add_value({ op: 'const', type: uint64, value: parseInt(idx) || idx })
+			ctx.push({ op: 'ext_const_array_array', type: txna_fields[name].type || any, origin: 'Gtxna', name, consumes: { index, index2} })
+			return ctx.resolve_label(next)
+		},
+	},
 	// Signature: -- any
 	'txn': {
 		availability: 'v1',

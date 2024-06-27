@@ -2,6 +2,10 @@ import assert from "./assert"
 import { AbstractValue, AbstractValueID, DataDependencies, OpName, RegionID, abstract_exec_program, process_contents } from "./tealift"
 import type { BasicBlock, BasicBlockIndex, Instruction, InstructionIndex, JSONifiedProgram, OperationName, PhiIndex, Terminal, TerminalOperationName } from "./json_output_types"
 import { enumerate } from "./utils"
+import txna_fields from "./txna_fields"
+import txn_fields from "./txn_fields"
+type TxnaFieldName = keyof typeof txna_fields
+type TxnFieldName = keyof typeof txn_fields
 
 function is_terminal(instruction: { op: OperationName | TerminalOperationName }): instruction is Terminal {
 	return instruction.op === 'switch-on-zero' || instruction.op === 'exit'
@@ -87,6 +91,8 @@ export const build_jsonified_program = (contents: string, filename: string) => {
 		cast: (value) => [value.type],
 		const: (value) => [value.type, value.value],
 		ext_const: (value) => [value.type, value.name],
+		ext_const_array: (value) => [value.type, txna_fields[value.name as TxnaFieldName]?.name || txn_fields[value.name as TxnFieldName].name],
+		ext_const_array_array: (value) => [value.type, txna_fields[value.name as TxnaFieldName]?.name || txn_fields[value.name as TxnFieldName].name],
 		load_global: () => [],
 		store_global: () => [],
 		delete_global: () => [],
@@ -130,7 +136,7 @@ export const build_jsonified_program = (contents: string, filename: string) => {
 			return []
 		}
 		return Object.values((value as any).consumes as DataDependencies).map(consumed_hash => {
-			const idx = hash_to_idx.get(consumed_hash)
+			const idx = hash_to_idx.get(consumed_hash)!
 			assert(idx !== undefined, 'Internal Error: consumed hash is not a valid instruction')
 			return idx
 		})

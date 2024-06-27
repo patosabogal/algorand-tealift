@@ -22,6 +22,13 @@
  * ```
  */
 export default {
+	args: {
+    index: 26,
+    name: 'ApplicationArgs',
+    type: '[]byte',
+    in: 'v2',
+    notes: 'Arguments passed to the application in the ApplicationCall transaction'
+  },
   ApplicationArgs: {
     index: 26,
     name: 'ApplicationArgs',

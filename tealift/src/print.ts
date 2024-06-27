@@ -1,6 +1,5 @@
 import { readFileSync } from "fs"
 import { build_jsonified_program } from "./print_module"
-import { format_jsonified_program } from "./format_jsonified_program"
 
 if (require.main === module) {
 	const file = process.argv[2]
@@ -12,5 +11,4 @@ if (require.main === module) {
 	const contents = readFileSync(file, 'utf8')
 	const program = build_jsonified_program(contents, file)
 	console.log(JSON.stringify(program, null, 2))
-	console.log(format_jsonified_program(program))
 }

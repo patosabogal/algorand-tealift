@@ -208,8 +208,8 @@ const isn: Record<string, InstructionDescription> = {
 	'*': v1_binop('mul', uint64),
 	'<': v1_binop('lt', uint64),
 	'>': v1_binop('gt', uint64),
-	'>=': v1_binop('gt', uint64),
-	'<=': v1_binop('gt', uint64),
+	'>=': v1_binop('ge', uint64),
+	'<=': v1_binop('le', uint64),
 	'&&': v1_binop('and', uint64),
 	'||': v1_binop('or', uint64),
 	// Signature: any any -- uint64
@@ -269,8 +269,8 @@ const isn: Record<string, InstructionDescription> = {
 	// Signature: []byte []byte -- uint64
 	'b<': binop('lt', bytearray),
 	'b>': binop('gt', bytearray),
-	'b>=': binop('gt', bytearray),
-	'b<=': binop('gt', bytearray),
+	'b>=': binop('ge', bytearray),
+	'b<=': binop('le', bytearray),
 	// Signature: uint64 uint64 -- uint64 uint64
 	'addw': {
 		next: () => [next],
